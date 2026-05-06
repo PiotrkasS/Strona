@@ -1,87 +1,139 @@
+import { useState } from 'react';
+
 export default function ResultsPanel({ result }) {
+  const [open, setOpen] = useState(false);
+
   const { success, duration, results } = result;
   const stats   = results?.stats ?? {};
   const passed  = stats.expected   ?? 0;
   const failed  = stats.unexpected ?? 0;
   const skipped = stats.skipped    ?? 0;
   const total   = passed + failed + skipped;
-  const flatTests = flattenTests(results?.suites ?? []);
+
+  const byFile = groupByFile(results?.suites ?? []);
 
   return (
-    <div style={{ marginTop: 24 }}>
-      <div className="section-title">
-        {success ? '✅' : '❌'} Wyniki uruchomienia
+    <div className="results-wrap">
+      {/* ── compact summary bar ── */}
+      <div className={`results-bar ${success ? 'bar-ok' : 'bar-fail'}`}>
+        <span className="bar-icon">{success ? '✅' : '❌'}</span>
+        <span className="bar-label">Wyniki:</span>
+
+        <span className="bar-chip ok">{passed} ✔</span>
+        {failed  > 0 && <span className="bar-chip fail">{failed} ✖</span>}
+        {skipped > 0 && <span className="bar-chip skip">{skipped} ⏭</span>}
+
+        <span className="bar-total">/ {total}</span>
+        <span className="bar-time">⏱ {(duration / 1000).toFixed(1)}s</span>
+
+        <button
+          className="bar-toggle"
+          onClick={() => setOpen(v => !v)}
+        >
+          {open ? '▲ Zwiń' : '▼ Szczegóły'}
+        </button>
       </div>
 
-      <div className="results-summary">
-        <span>
-          <span className="label">Czas:</span>
-          <span className="value">{(duration / 1000).toFixed(1)}s</span>
-        </span>
-        <span>
-          <span className="label">Łącznie:</span>
-          <span className="value">{total}</span>
-        </span>
-        <span>
-          <span className="label" style={{ color: 'var(--success)' }}>✔ Zaliczone:</span>
-          <span className="value" style={{ color: 'var(--success)' }}>{passed}</span>
-        </span>
-        <span>
-          <span className="label" style={{ color: 'var(--error)' }}>✖ Błędy:</span>
-          <span className="value" style={{ color: 'var(--error)' }}>{failed}</span>
-        </span>
-        {skipped > 0 && (
-          <span>
-            <span className="label">⏭ Pominięte:</span>
-            <span className="value" style={{ color: 'var(--skipped)' }}>{skipped}</span>
-          </span>
-        )}
-      </div>
+      {/* ── expandable details ── */}
+      {open && (
+        <div className="results-details">
+          {byFile.length === 0 && (
+            <div className="alert alert-info">ℹ Brak szczegółowych wyników — sprawdź terminal powyżej.</div>
+          )}
 
-      {flatTests.length > 0 && (
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          {flatTests.map((t, i) => (
-            <div key={i} className="test-result-item">
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="test-result-name">{t.title}</div>
-                <div className="test-result-file">{t.file}</div>
-                {t.error && <div className="error-details">{t.error}</div>}
-              </div>
-              <div className="test-result-meta">
-                <span className="test-result-duration">{t.duration}ms</span>
-                <span className={`result-badge ${t.status}`}>
-                  {t.status === 'passed'  && '✔ Zaliczony'}
-                  {t.status === 'failed'  && '✖ Błąd'}
-                  {t.status === 'skipped' && '⏭ Pominięty'}
-                </span>
-              </div>
-            </div>
-          ))}
+          {byFile.map(({ file, tests }) => {
+            const filePassed  = tests.filter(t => t.status === 'passed').length;
+            const fileFailed  = tests.filter(t => t.status === 'failed').length;
+            const fileSkipped = tests.filter(t => t.status === 'skipped').length;
+
+            return (
+              <FileResult
+                key={file}
+                file={file}
+                tests={tests}
+                passed={filePassed}
+                failed={fileFailed}
+                skipped={fileSkipped}
+              />
+            );
+          })}
         </div>
-      )}
-
-      {flatTests.length === 0 && (
-        <div className="alert alert-info">ℹ Brak szczegółowych wyników — sprawdź terminal powyżej.</div>
       )}
     </div>
   );
 }
 
-function flattenTests(suites, file = '') {
-  const out = [];
-  for (const suite of suites) {
-    const f = suite.file ?? file;
-    if (suite.specs) {
-      for (const spec of suite.specs) {
-        const testResult = spec.tests?.[0]?.results?.[0] ?? {};
-        const status     = resolveStatus(spec.tests?.[0]);
-        const error      = testResult.errors?.[0]?.message ?? testResult.error?.message ?? null;
-        out.push({ title: spec.title, file: f, status, duration: testResult.duration ?? 0, error });
+function FileResult({ file, tests, passed, failed, skipped }) {
+  const [open, setOpen] = useState(failed > 0); // auto-open if there are failures
+
+  return (
+    <div className="file-result-card">
+      {/* file header */}
+      <div className="file-result-header" onClick={() => setOpen(v => !v)}>
+        <span className="file-result-chevron">{open ? '▼' : '▶'}</span>
+        <span className="file-result-name">{file || 'nieznany plik'}</span>
+        <div className="file-result-chips">
+          <span className="bar-chip ok">{passed} ✔</span>
+          {failed  > 0 && <span className="bar-chip fail">{failed} ✖</span>}
+          {skipped > 0 && <span className="bar-chip skip">{skipped} ⏭</span>}
+        </div>
+      </div>
+
+      {/* individual tests */}
+      {open && (
+        <div className="file-result-body">
+          {tests.map((t, i) => (
+            <div key={i} className={`tr-item tr-${t.status}`}>
+              <span className="tr-icon">
+                {t.status === 'passed'  && '✔'}
+                {t.status === 'failed'  && '✖'}
+                {t.status === 'skipped' && '⏭'}
+              </span>
+              <div className="tr-info">
+                <div className="tr-name">{t.title}</div>
+                {t.duration > 0 && (
+                  <div className="tr-dur">{t.duration}ms</div>
+                )}
+                {t.error && (
+                  <div className="tr-error">{t.error}</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+function groupByFile(suites) {
+  const map = new Map();
+
+  function walk(suites, file) {
+    for (const suite of suites) {
+      const f = suite.file ?? file;
+      if (suite.specs) {
+        if (!map.has(f)) map.set(f, []);
+        for (const spec of suite.specs) {
+          const res    = spec.tests?.[0]?.results?.[0] ?? {};
+          const status = resolveStatus(spec.tests?.[0]);
+          const error  = res.errors?.[0]?.message ?? res.error?.message ?? null;
+          map.get(f).push({
+            title:    spec.title,
+            status,
+            duration: res.duration ?? 0,
+            error,
+          });
+        }
       }
+      if (suite.suites) walk(suite.suites, f);
     }
-    if (suite.suites) out.push(...flattenTests(suite.suites, f));
   }
-  return out;
+
+  walk(suites, '');
+  return [...map.entries()].map(([file, tests]) => ({ file, tests }));
 }
 
 function resolveStatus(test) {
