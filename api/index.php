@@ -13,13 +13,14 @@ $path = preg_replace('#^/api#', '', $uri);
 $method = $_SERVER['REQUEST_METHOD'];
 
 match (true) {
-    $path === '/tests'        && $method === 'GET'    => handleListTests(),
-    $path === '/tests'        && $method === 'DELETE' => handleDeleteTest(),
-    $path === '/run'          && $method === 'POST'   => handleRun(),
-    $path === '/codegen'      && $method === 'POST'   => handleCodegen(),
-    $path === '/file-content' && $method === 'GET'    => handleFileContent(),
-    $path === '/file-content' && $method === 'PUT'    => handleSaveFile(),
-    $path === '/ai-fix'       && $method === 'POST'   => handleAiFix(),
+    $path === '/tests'         && $method === 'GET'    => handleListTests(),
+    $path === '/tests'         && $method === 'DELETE' => handleDeleteTest(),
+    $path === '/run'           && $method === 'POST'   => handleRun(),
+    $path === '/codegen'       && $method === 'POST'   => handleCodegen(),
+    $path === '/file-content'  && $method === 'GET'    => handleFileContent(),
+    $path === '/file-content'  && $method === 'PUT'    => handleSaveFile(),
+    $path === '/ai-fix'        && $method === 'POST'   => handleAiFix(),
+    $path === '/close-browser' && $method === 'POST'   => handleCloseBrowser(),
     default => respond(404, ['error' => 'Endpoint not found']),
 };
 
@@ -118,15 +119,18 @@ function handleRun(): void
     header('X-Accel-Buffering: no');
     header('Connection: keep-alive');
 
-    $headed  = !empty($options['headed']);
-    $jsonTmp = tempnam(sys_get_temp_dir(), 'pw_json_');
-    $fileArg = implode(' ', $fileParts);
+    $headed     = !empty($options['headed']);
+    $pauseAfter = !empty($options['pauseAfter']);
+    $slowMo     = max(0, (int)($options['slowMo'] ?? 0));
+    $jsonTmp    = tempnam(sys_get_temp_dir(), 'pw_json_');
+    $fileArg    = implode(' ', $fileParts);
 
     $env = array_merge(getenv() ?: [], [
         'PLAYWRIGHT_JSON_OUTPUT_NAME' => $jsonTmp,
         'FORCE_COLOR'                 => '0',
         'CI'                          => $headed ? '0' : '1',
         'DISPLAY'                     => getenv('DISPLAY') ?: ':99',
+        'PW_SLOW_MO'                  => $slowMo > 0 ? (string)$slowMo : '0',
     ]);
 
     $descriptors = [
@@ -209,6 +213,37 @@ function handleRun(): void
         'results'  => $results,
     ]);
     flush();
+
+    // If pauseAfter requested, open a review browser window and notify client
+    if ($pauseAfter && $headed) {
+        $display = getenv('DISPLAY') ?: ':99';
+        $baseUrl = getenv('BASE_URL') ?: 'about:blank';
+        $pidFile = '/tmp/pw-review.pid';
+        $logFile = '/tmp/pw-review.log';
+        $pid = trim(shell_exec(
+            'DISPLAY=' . escapeshellarg($display) .
+            ' nohup npx playwright open ' . escapeshellarg($baseUrl) .
+            ' --headed > ' . escapeshellarg($logFile) . ' 2>&1 & echo $!'
+        ));
+        if (is_numeric($pid)) {
+            file_put_contents($pidFile, $pid);
+        }
+        sseEvent('paused', ['pid' => (int)$pid]);
+        flush();
+    }
+}
+
+function handleCloseBrowser(): void
+{
+    $pidFile = '/tmp/pw-review.pid';
+    $pid = trim(@file_get_contents($pidFile) ?: '');
+    if ($pid && is_numeric($pid)) {
+        shell_exec("kill $pid 2>/dev/null; pkill -P $pid 2>/dev/null; true");
+        @unlink($pidFile);
+    }
+    // Kill any remaining playwright open / chromium review processes
+    shell_exec('pkill -f "playwright open" 2>/dev/null; true');
+    respond(200, ['ok' => true]);
 }
 
 function handleCodegen(): void

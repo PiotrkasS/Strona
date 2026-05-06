@@ -9,8 +9,11 @@ export default function TestRunner() {
   const [selections, setSelections] = useState({});
   const [expanded, setExpanded]     = useState({});
   const [headed, setHeaded]         = useState(true);
+  const [slowMo, setSlowMo]         = useState(0);
+  const [pauseAfter, setPauseAfter] = useState(false);
   const [editFile, setEditFile]     = useState(null); // { path, name }
   const [running, setRunning]       = useState(false);
+  const [paused, setPaused]         = useState(false);
   const [lines, setLines]           = useState([]);
   const [progress, setProgress]     = useState({ done: 0, total: 0 });
   const [runResult, setRunResult]   = useState(null);
@@ -81,12 +84,20 @@ export default function TestRunner() {
     setExpanded(prev => { const n = { ...prev }; delete n[path]; return n; });
   }, []);
 
+  // ── close review browser ─────────────────────────────────────────────────
+
+  const closeBrowser = async () => {
+    await fetch('/api/close-browser', { method: 'POST' }).catch(() => {});
+    setPaused(false);
+  };
+
   // ── run ──────────────────────────────────────────────────────────────────
 
   const runTests = async () => {
     if (totalSelected === 0) return;
     const total = totalSelected;
     setRunning(true);
+    setPaused(false);
     setLines([]);
     setProgress({ done: 0, total });
     setRunResult(null);
@@ -105,7 +116,7 @@ export default function TestRunner() {
       const response = await fetch('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ files: selectedFiles, options: { headed } }),
+        body: JSON.stringify({ files: selectedFiles, options: { headed, slowMo, pauseAfter } }),
       });
 
       if (!response.ok) {
@@ -137,6 +148,8 @@ export default function TestRunner() {
           if (evType === 'done') {
             setRunResult(parsed);
             saveHistory(selectedFiles.map(f => f.path), parsed);
+          } else if (evType === 'paused') {
+            setPaused(true);
           } else if (evType === 'error') {
             setRunError(parsed.message ?? 'Nieznany błąd');
           } else {
@@ -189,6 +202,22 @@ export default function TestRunner() {
           </div>
           {headed && <span className="headed-badge">HEADED</span>}
         </label>
+
+        {headed && (
+          <>
+            <select className="slowmo-select" value={slowMo} onChange={e => setSlowMo(Number(e.target.value))}
+              title="Prędkość wykonywania akcji">
+              <option value={0}>⚡ Normalna</option>
+              <option value={500}>🐇 Wolna (0.5s)</option>
+              <option value={1000}>🐢 Bardzo wolna (1s)</option>
+              <option value={2000}>🔍 Krok po kroku (2s)</option>
+            </select>
+            <label className="pause-label">
+              <input type="checkbox" checked={pauseAfter} onChange={e => setPauseAfter(e.target.checked)} />
+              <span>Nie zamykaj okna</span>
+            </label>
+          </>
+        )}
 
         <span className="toolbar-spacer" />
         <span style={{ color: 'var(--muted)', fontSize: 13 }}>
@@ -281,13 +310,30 @@ export default function TestRunner() {
             </div>
           )}
 
-          {headed && (running || !!runResult) && (
+          {headed && (running || !!runResult) && !paused && (
             <div className="alert alert-info" style={{ marginBottom: 12 }}>
               🖥️ Tryb wizualny — przeglądarka otwarta w Docker:{' '}
               <a href="http://localhost:7900/vnc_auto.html" target="_blank" rel="noreferrer"
                  style={{ color: 'var(--primary)', fontWeight: 600 }}>
                 localhost:7900
               </a>
+            </div>
+          )}
+
+          {paused && (
+            <div className="paused-banner">
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>🖥️ Przeglądarka otwarta — przejrzyj wyniki</div>
+                <div style={{ fontSize: 12 }}>
+                  Otwórz{' '}
+                  <a href="http://localhost:7900/vnc_auto.html" target="_blank" rel="noreferrer"
+                     style={{ color: 'var(--primary)' }}>localhost:7900</a>
+                  {' '}żeby zobaczyć okno przeglądarki.
+                </div>
+              </div>
+              <button className="btn btn-danger btn-sm" onClick={closeBrowser}>
+                ✕ Zamknij przeglądarkę
+              </button>
             </div>
           )}
 
