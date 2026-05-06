@@ -45,6 +45,8 @@ export default function CreateTest() {
     if (!url || !filename) return;
     const safeName = filename.replace(/[^a-z0-9\-_]/gi, '-').replace(/^-+|-+$/g, '') || 'nowy-test';
     recordingPathRef.current = 'panel/' + safeName + (safeName.endsWith('.spec.ts') ? '' : '.spec.ts');
+    // Auto-open noVNC after short delay (browser needs a moment to start)
+    setTimeout(() => window.open('http://localhost:7900/vnc_auto.html', '_blank'), 2500);
 
     setRecording(true);
     setLines([]);
@@ -214,25 +216,36 @@ export default function CreateTest() {
             )}
           </div>
 
-          {/* RIGHT — live generated code */}
-          <div className="record-split-right">
-            <div className="record-code-header">
-              <span>📄 Generowany kod testu</span>
-              {liveLines > 0 && <span>{liveLines} linii</span>}
-              {recording && liveLines === 0 && <span style={{ fontStyle: 'italic' }}>oczekiwanie na kliknięcia…</span>}
-            </div>
-            {liveCode ? (
-              <pre>{liveCode}</pre>
+          {/* RIGHT — noVNC during recording, code after */}
+          <div className="record-split-right" style={{ minHeight: 480 }}>
+            {recording ? (
+              <>
+                <div className="record-code-header">
+                  <span>🖥️ Podgląd przeglądarki — klikaj tutaj!</span>
+                  <a href="http://localhost:7900/vnc_auto.html" target="_blank" rel="noreferrer"
+                     style={{ color: 'var(--primary)', fontSize: 11 }}>↗ otwórz pełny ekran</a>
+                </div>
+                <iframe
+                  src="http://localhost:7900/vnc_auto.html"
+                  style={{ width: '100%', height: 460, border: 'none', display: 'block' }}
+                  title="noVNC – podgląd przeglądarki"
+                />
+              </>
             ) : (
-              <div className="record-code-empty">
-                <div style={{ fontSize: 28, marginBottom: 10 }}>✍️</div>
-                <div>Kod pojawi się tutaj w miarę klikania po stronie</div>
-                {recording && (
-                  <div style={{ fontSize: 11, marginTop: 8 }}>
-                    Aktualizuje się co 2 sekundy
+              <>
+                <div className="record-code-header">
+                  <span>📄 Wygenerowany kod testu</span>
+                  {liveLines > 0 && <span>{liveLines} linii</span>}
+                </div>
+                {liveCode ? (
+                  <pre>{liveCode}</pre>
+                ) : (
+                  <div className="record-code-empty">
+                    <div style={{ fontSize: 28, marginBottom: 10 }}>✍️</div>
+                    <div>Kod pojawi się tu po zakończeniu nagrywania</div>
                   </div>
                 )}
-              </div>
+              </>
             )}
           </div>
         </div>

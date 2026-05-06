@@ -40,18 +40,29 @@ function handleListTests(): void
         if (!str_contains($file->getFilename(), '.spec.')) continue;
         if (!in_array($file->getExtension(), ['ts', 'js'])) continue;
 
-        $content      = file_get_contents($file->getPathname());
+        // Skip empty or huge files
+        $size = $file->getSize();
+        if ($size === 0 || $size > 2_000_000) continue;
+
+        $content = @file_get_contents($file->getPathname());
+        if ($content === false) continue;
+
         $relativePath = ltrim(str_replace($testsDir, '', $file->getPathname()), DIRECTORY_SEPARATOR);
         $relativePath = str_replace(DIRECTORY_SEPARATOR, '/', $relativePath);
 
-        preg_match_all('/\btest\s*\(\s*[\'"](.+?)[\'"]/m', $content, $testMatches);
-        preg_match_all('/\bdescribe\s*\(\s*[\'"](.+?)[\'"]/m', $content, $descMatches);
+        // Safe regex: limit match length, no catastrophic backtracking
+        preg_match_all('/\btest\s*\(\s*[\'"]([^\'"]{1,300})[\'"]/m', $content, $testMatches);
+        preg_match_all('/\bdescribe\s*\(\s*[\'"]([^\'"]{1,300})[\'"]/m', $content, $descMatches);
+
+        // Also match it('...') style
+        preg_match_all('/\bit\s*\(\s*[\'"]([^\'"]{1,300})[\'"]/m', $content, $itMatches);
+        $allTests = array_values(array_unique(array_merge($testMatches[1], $itMatches[1])));
 
         $files[] = [
             'path'     => $relativePath,
             'name'     => $file->getFilename(),
             'category' => $descMatches[1][0] ?? pathinfo($file->getFilename(), PATHINFO_FILENAME),
-            'tests'    => $testMatches[1],
+            'tests'    => $allTests ?: ['(brak named testów)'],
         ];
     }
 
@@ -242,10 +253,17 @@ function handleCodegen(): void
     sseData('🛑 Zamknij przeglądarkę gdy skończysz.');
     flush();
 
-    $cmd = 'npx playwright codegen '
-        . escapeshellarg($url)
-        . ' --output ' . escapeshellarg($outputPath)
-        . ' --target playwright-test';
+    $codegenScript = file_exists('/codegen-start.sh') ? '/codegen-start.sh' : null;
+    if ($codegenScript) {
+        $cmd = 'bash ' . $codegenScript
+            . ' ' . escapeshellarg($url)
+            . ' ' . escapeshellarg($outputPath);
+    } else {
+        $cmd = 'npx playwright codegen '
+            . escapeshellarg($url)
+            . ' --output ' . escapeshellarg($outputPath)
+            . ' --target playwright-test';
+    }
 
     $env         = array_merge(getenv() ?: [], [
         'FORCE_COLOR' => '0',

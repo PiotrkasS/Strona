@@ -224,9 +224,11 @@ export default function TestRunner() {
                       <div className="file-category">{file.category}</div>
                     </div>
                   </div>
-                  <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
-                    {state !== 'none' && <span className="sel-chip">{selCount}/{file.tests.length}</span>}
-                    <span className="file-badge">{file.tests.length} testów</span>
+                  <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {state !== 'none'
+                      ? <span className="sel-chip">{selCount} / {file.tests.length}</span>
+                      : <span className="file-badge">{file.tests.length} testów</span>
+                    }
                     <DeleteButton path={file.path} onDelete={deleteTest} />
                   </div>
                 </div>
@@ -240,7 +242,7 @@ export default function TestRunner() {
                           <li key={i} className={`test-item ${checked ? 'test-item-checked' : ''}`}>
                             <label>
                               <input type="checkbox" checked={checked} onChange={() => toggleTest(file.path, name)} />
-                              <span className="test-emoji">🧪</span>
+                              <span className="test-dot" />
                               <span>{name}</span>
                             </label>
                           </li>

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 echo "[display] Starting Xvfb on :99..."
-Xvfb :99 -screen 0 1280x900x24 -ac +extension RANDR &
+Xvfb :99 -screen 0 1920x1080x24 -ac +extension RANDR &
 sleep 2   # wait for Xvfb to be ready
 export DISPLAY=:99
 echo "[display] DISPLAY=$DISPLAY"

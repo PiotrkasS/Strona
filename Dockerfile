@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y \
     novnc \
     xvfb \
     dos2unix \
+    xdotool \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -18,7 +19,9 @@ RUN npm run build
 
 # Start script: Xvfb + VNC + PHP server
 COPY docker-start.sh /docker-start.sh
-RUN dos2unix /docker-start.sh && chmod +x /docker-start.sh
+COPY codegen-start.sh /codegen-start.sh
+RUN dos2unix /docker-start.sh /codegen-start.sh \
+ && chmod +x /docker-start.sh /codegen-start.sh
 
 EXPOSE 8000 7900
 
