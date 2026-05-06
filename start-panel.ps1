@@ -1,177 +1,226 @@
+Set-Location $PSScriptRoot
+
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-# ── Colors ───────────────────────────────────────────────────────────────────
-$C_BG     = [System.Drawing.Color]::FromArgb(15,  23,  42)
-$C_BG2    = [System.Drawing.Color]::FromArgb(30,  41,  59)
-$C_BG3    = [System.Drawing.Color]::FromArgb(51,  65,  85)
-$C_TEXT   = [System.Drawing.Color]::FromArgb(241, 245, 249)
-$C_MUTED  = [System.Drawing.Color]::FromArgb(148, 163, 184)
-$C_BLUE   = [System.Drawing.Color]::FromArgb(59,  130, 246)
-$C_GREEN  = [System.Drawing.Color]::FromArgb(34,  197, 94)
-$C_RED    = [System.Drawing.Color]::FromArgb(239, 68,  68)
+# Drag borderless window
+Add-Type @"
+using System; using System.Runtime.InteropServices;
+public class W32 {
+    [DllImport("user32.dll")] public static extern bool ReleaseCapture();
+    [DllImport("user32.dll")] public static extern int SendMessage(IntPtr h, int m, int w, int l);
+}
+"@
 
-# ── Form ─────────────────────────────────────────────────────────────────────
-$form                  = New-Object System.Windows.Forms.Form
-$form.Text             = "Panel Test Runner"
-$form.Size             = New-Object System.Drawing.Size(540, 340)
-$form.StartPosition    = "CenterScreen"
-$form.FormBorderStyle  = "FixedSingle"
-$form.MaximizeBox      = $false
-$form.BackColor        = $C_BG
+# ── Kolory ─────────────────────────────────────────────────────────────────────
+$BG     = [Drawing.Color]::FromArgb(13,  17,  23)
+$CARD   = [Drawing.Color]::FromArgb(22,  30,  46)
+$BORDER = [Drawing.Color]::FromArgb(51,  65,  85)
+$BLUE   = [Drawing.Color]::FromArgb(59,  130, 246)
+$GREEN  = [Drawing.Color]::FromArgb(34,  197, 94)
+$RED    = [Drawing.Color]::FromArgb(239, 68,  68)
+$TEXT   = [Drawing.Color]::FromArgb(241, 245, 249)
+$MUTED  = [Drawing.Color]::FromArgb(100, 116, 139)
+$WHITE  = [Drawing.Color]::White
 
-# ── Header bar ───────────────────────────────────────────────────────────────
-$header           = New-Object System.Windows.Forms.Panel
-$header.Size      = New-Object System.Drawing.Size(540, 100)
-$header.Location  = New-Object System.Drawing.Point(0, 0)
-$header.BackColor = $C_BG2
-$form.Controls.Add($header)
+# ── Form ───────────────────────────────────────────────────────────────────────
+$W = 480; $H = 320
+$form                 = New-Object Windows.Forms.Form
+$form.FormBorderStyle = 'None'
+$form.Size            = New-Object Drawing.Size($W, $H)
+$form.StartPosition   = 'CenterScreen'
+$form.BackColor       = $BG
+$form.TopMost         = $true
 
-$lbTitle          = New-Object System.Windows.Forms.Label
-$lbTitle.Text     = "Panel Test Runner"
-$lbTitle.Font     = New-Object System.Drawing.Font("Segoe UI", 18, [System.Drawing.FontStyle]::Bold)
-$lbTitle.ForeColor = $C_TEXT
-$lbTitle.AutoSize = $true
-$lbTitle.Location = New-Object System.Drawing.Point(25, 18)
-$header.Controls.Add($lbTitle)
-
-$lbSub            = New-Object System.Windows.Forms.Label
-$lbSub.Text       = "Playwright  ·  PHP  ·  React"
-$lbSub.Font       = New-Object System.Drawing.Font("Segoe UI", 9)
-$lbSub.ForeColor  = $C_MUTED
-$lbSub.AutoSize   = $true
-$lbSub.Location   = New-Object System.Drawing.Point(27, 60)
-$header.Controls.Add($lbSub)
-
-# ── Status label ─────────────────────────────────────────────────────────────
-$lbStatus          = New-Object System.Windows.Forms.Label
-$lbStatus.Text     = "Inicjalizacja..."
-$lbStatus.Font     = New-Object System.Drawing.Font("Segoe UI", 10)
-$lbStatus.ForeColor = $C_TEXT
-$lbStatus.Size     = New-Object System.Drawing.Size(490, 26)
-$lbStatus.Location = New-Object System.Drawing.Point(25, 120)
-$form.Controls.Add($lbStatus)
-
-# ── Step detail ───────────────────────────────────────────────────────────────
-$lbDetail          = New-Object System.Windows.Forms.Label
-$lbDetail.Text     = ""
-$lbDetail.Font     = New-Object System.Drawing.Font("Segoe UI", 9)
-$lbDetail.ForeColor = $C_MUTED
-$lbDetail.Size     = New-Object System.Drawing.Size(490, 20)
-$lbDetail.Location = New-Object System.Drawing.Point(25, 148)
-$form.Controls.Add($lbDetail)
-
-# ── Progress bar ─────────────────────────────────────────────────────────────
-$pb               = New-Object System.Windows.Forms.ProgressBar
-$pb.Size          = New-Object System.Drawing.Size(490, 10)
-$pb.Location      = New-Object System.Drawing.Point(25, 178)
-$pb.Style         = "Continuous"
-$pb.Maximum       = 100
-$pb.Value         = 0
-$form.Controls.Add($pb)
-
-# ── Separator ────────────────────────────────────────────────────────────────
-$sep              = New-Object System.Windows.Forms.Panel
-$sep.Size         = New-Object System.Drawing.Size(490, 1)
-$sep.Location     = New-Object System.Drawing.Point(25, 200)
-$sep.BackColor    = $C_BG3
-$form.Controls.Add($sep)
-
-# ── URL info ──────────────────────────────────────────────────────────────────
-$lbUrl            = New-Object System.Windows.Forms.Label
-$lbUrl.Text       = "http://localhost:8080"
-$lbUrl.Font       = New-Object System.Drawing.Font("Consolas", 9)
-$lbUrl.ForeColor  = $C_MUTED
-$lbUrl.AutoSize   = $true
-$lbUrl.Location   = New-Object System.Drawing.Point(25, 214)
-$form.Controls.Add($lbUrl)
-
-$lbVnc            = New-Object System.Windows.Forms.Label
-$lbVnc.Text       = "noVNC: http://localhost:7900"
-$lbVnc.Font       = New-Object System.Drawing.Font("Consolas", 9)
-$lbVnc.ForeColor  = $C_MUTED
-$lbVnc.AutoSize   = $true
-$lbVnc.Location   = New-Object System.Drawing.Point(280, 214)
-$form.Controls.Add($lbVnc)
-
-# ── Stop button (hidden initially) ───────────────────────────────────────────
-$btnStop               = New-Object System.Windows.Forms.Button
-$btnStop.Text          = "Zatrzymaj aplikacje"
-$btnStop.Size          = New-Object System.Drawing.Size(200, 38)
-$btnStop.Location      = New-Object System.Drawing.Point(170, 255)
-$btnStop.Font          = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-$btnStop.BackColor     = $C_RED
-$btnStop.ForeColor     = $C_TEXT
-$btnStop.FlatStyle     = "Flat"
-$btnStop.FlatAppearance.BorderSize = 0
-$btnStop.Visible       = $false
-$btnStop.Cursor        = [System.Windows.Forms.Cursors]::Hand
-$form.Controls.Add($btnStop)
-
-$btnStop.Add_Click({
-    $lbStatus.Text     = "Zatrzymywanie kontenera..."
-    $lbStatus.ForeColor = $C_MUTED
-    $btnStop.Enabled   = $false
-    $form.Refresh()
-    Push-Location $PSScriptRoot
-    & docker-compose down 2>&1 | Out-Null
-    Pop-Location
-    $form.Close()
+# Obramowanie 1px
+$form.Add_Paint({
+    $pen = New-Object Drawing.Pen($BORDER, 1)
+    $_.Graphics.DrawRectangle($pen, 0, 0, $W - 1, $H - 1)
+    $pen.Dispose()
 })
 
-# ── Helper ────────────────────────────────────────────────────────────────────
-function Set-Step($pct, $msg, $detail = "", $color = $null) {
-    $pb.Value           = [math]::Min($pct, 100)
-    $lbStatus.Text      = $msg
-    $lbStatus.ForeColor = if ($color) { $color } else { $C_TEXT }
-    $lbDetail.Text      = $detail
-    $form.Refresh()
-    [System.Windows.Forms.Application]::DoEvents()
+# Przeciąganie okna myszką
+$form.Add_MouseDown({
+    [W32]::ReleaseCapture()
+    [W32]::SendMessage($form.Handle, 0xA1, 0x2, 0)
+})
+
+# ── Header ─────────────────────────────────────────────────────────────────────
+$header           = New-Object Windows.Forms.Panel
+$header.Size      = New-Object Drawing.Size($W, 110)
+$header.Location  = New-Object Drawing.Point(0, 0)
+$header.BackColor = $CARD
+$header.Add_MouseDown({ [W32]::ReleaseCapture(); [W32]::SendMessage($form.Handle, 0xA1, 0x2, 0) })
+$form.Controls.Add($header)
+
+$lbIcon           = New-Object Windows.Forms.Label
+$lbIcon.Text      = [char]0x25B6   # ▶
+$lbIcon.Font      = New-Object Drawing.Font("Segoe UI", 26, [Drawing.FontStyle]::Bold)
+$lbIcon.ForeColor = $BLUE
+$lbIcon.AutoSize  = $true
+$lbIcon.Location  = New-Object Drawing.Point(28, 18)
+$header.Controls.Add($lbIcon)
+
+$lbTitle          = New-Object Windows.Forms.Label
+$lbTitle.Text     = "Panel Test Runner"
+$lbTitle.Font     = New-Object Drawing.Font("Segoe UI", 17, [Drawing.FontStyle]::Bold)
+$lbTitle.ForeColor = $WHITE
+$lbTitle.AutoSize  = $true
+$lbTitle.Location  = New-Object Drawing.Point(72, 20)
+$header.Controls.Add($lbTitle)
+
+$lbSub            = New-Object Windows.Forms.Label
+$lbSub.Text       = "Playwright  ·  PHP  ·  React"
+$lbSub.Font       = New-Object Drawing.Font("Segoe UI", 9)
+$lbSub.ForeColor  = $MUTED
+$lbSub.AutoSize   = $true
+$lbSub.Location   = New-Object Drawing.Point(74, 60)
+$header.Controls.Add($lbSub)
+
+# Separator pod headerem
+$sep           = New-Object Windows.Forms.Panel
+$sep.Size      = New-Object Drawing.Size($W, 1)
+$sep.Location  = New-Object Drawing.Point(0, 110)
+$sep.BackColor = $BORDER
+$form.Controls.Add($sep)
+
+# ── Kroki (4 etykiety) ─────────────────────────────────────────────────────────
+$steps = @(
+    "Sprawdzanie Docker",
+    "Pobieranie aktualizacji",
+    "Uruchamianie kontenera",
+    "Aplikacja gotowa"
+)
+$stepLabels = @()
+for ($i = 0; $i -lt 4; $i++) {
+    $lb           = New-Object Windows.Forms.Label
+    $lb.Text      = "   $($steps[$i])"
+    $lb.Font      = New-Object Drawing.Font("Segoe UI", 10)
+    $lb.ForeColor = $MUTED
+    $lb.Size      = New-Object Drawing.Size(430, 26)
+    $lb.Location  = New-Object Drawing.Point(24, 122 + $i * 30)
+    $form.Controls.Add($lb)
+    $stepLabels += $lb
 }
 
-$form.Show()
-$form.Refresh()
+# ── Pasek postępu ──────────────────────────────────────────────────────────────
+$pbTrack           = New-Object Windows.Forms.Panel
+$pbTrack.Size      = New-Object Drawing.Size(432, 6)
+$pbTrack.Location  = New-Object Drawing.Point(24, 248)
+$pbTrack.BackColor = $BORDER
+$form.Controls.Add($pbTrack)
 
-# ── Step 1: Docker ───────────────────────────────────────────────────────────
-Set-Step 5 "Sprawdzanie Docker..." "Krok 1 / 4"
+$pbFill            = New-Object Windows.Forms.Panel
+$pbFill.Size       = New-Object Drawing.Size(0, 6)
+$pbFill.Location   = New-Object Drawing.Point(0, 0)
+$pbFill.BackColor  = $BLUE
+$pbTrack.Controls.Add($pbFill)
 
-& docker info 2>&1 | Out-Null
+# ── Status tekst ───────────────────────────────────────────────────────────────
+$lbStatus           = New-Object Windows.Forms.Label
+$lbStatus.Text      = "Inicjalizacja..."
+$lbStatus.Font      = New-Object Drawing.Font("Segoe UI", 9)
+$lbStatus.ForeColor = $MUTED
+$lbStatus.Size      = New-Object Drawing.Size(432, 20)
+$lbStatus.Location  = New-Object Drawing.Point(24, 260)
+$form.Controls.Add($lbStatus)
+
+# ── Przyciski (ukryte na start) ────────────────────────────────────────────────
+$btnOpen               = New-Object Windows.Forms.Button
+$btnOpen.Text          = "Otwórz aplikację"
+$btnOpen.Size          = New-Object Drawing.Size(190, 36)
+$btnOpen.Location      = New-Object Drawing.Point(24, 274)
+$btnOpen.Font          = New-Object Drawing.Font("Segoe UI", 9, [Drawing.FontStyle]::Bold)
+$btnOpen.BackColor     = $BLUE
+$btnOpen.ForeColor     = $WHITE
+$btnOpen.FlatStyle     = 'Flat'
+$btnOpen.FlatAppearance.BorderSize = 0
+$btnOpen.Visible       = $false
+$btnOpen.Cursor        = [Windows.Forms.Cursors]::Hand
+$btnOpen.Add_Click({ Start-Process "http://localhost:8080" })
+$form.Controls.Add($btnOpen)
+
+$btnStop               = New-Object Windows.Forms.Button
+$btnStop.Text          = "Zatrzymaj"
+$btnStop.Size          = New-Object Drawing.Size(130, 36)
+$btnStop.Location      = New-Object Drawing.Point(226, 274)
+$btnStop.Font          = New-Object Drawing.Font("Segoe UI", 9)
+$btnStop.BackColor     = [Drawing.Color]::FromArgb(30, 41, 59)
+$btnStop.ForeColor     = $MUTED
+$btnStop.FlatStyle     = 'Flat'
+$btnStop.FlatAppearance.BorderSize = 1
+$btnStop.FlatAppearance.BorderColor = $BORDER
+$btnStop.Visible       = $false
+$btnStop.Cursor        = [Windows.Forms.Cursors]::Hand
+$btnStop.Add_Click({
+    $lbStatus.Text      = "Zatrzymywanie..."
+    $btnStop.Enabled    = $false
+    $form.Refresh()
+    docker-compose down 2>&1 | Out-Null
+    $form.Close()
+})
+$form.Controls.Add($btnStop)
+
+# ── Pomocnicze ─────────────────────────────────────────────────────────────────
+function DoEvents { [Windows.Forms.Application]::DoEvents() }
+
+function Set-Progress($pct, $status, $stepIdx = -1, $done = $false) {
+    $pbFill.Width   = [int](432 * $pct / 100)
+    $pbFill.BackColor = if ($done) { $GREEN } else { $BLUE }
+    $lbStatus.Text  = $status
+    if ($stepIdx -ge 0) {
+        for ($i = 0; $i -lt 4; $i++) {
+            if ($i -lt $stepIdx) {
+                $stepLabels[$i].ForeColor = $GREEN
+                $stepLabels[$i].Text = [char]0x2713 + "  $($steps[$i])"
+            } elseif ($i -eq $stepIdx) {
+                $stepLabels[$i].ForeColor = $WHITE
+                $stepLabels[$i].Text = "  > $($steps[$i])"
+            } else {
+                $stepLabels[$i].ForeColor = $MUTED
+                $stepLabels[$i].Text = "   $($steps[$i])"
+            }
+        }
+    }
+    $form.Refresh(); DoEvents
+}
+
+# ── Start ──────────────────────────────────────────────────────────────────────
+$form.Show(); DoEvents
+
+# Krok 1: Docker
+Set-Progress 5 "Sprawdzanie Docker..." 0
+
+docker info 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
-    Set-Step 10 "Uruchamianie Docker Desktop..." "Krok 1 / 4 — moze zajac do 30 sekund"
+    Set-Progress 8 "Uruchamianie Docker Desktop..." 0
     Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe" -ErrorAction SilentlyContinue
     $w = 0
     while ($w -lt 120) {
         Start-Sleep -Seconds 3; $w += 3
-        & docker info 2>&1 | Out-Null
+        docker info 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) { break }
-        Set-Step ([math]::Min(10 + $w, 28)) "Czekam na Docker Desktop..." "Krok 1 / 4 — $w s"
+        Set-Progress ([math]::Min(8 + $w / 2, 24)) "Czekam na Docker... ($w s)" 0
     }
 }
-
-Set-Step 30 "Docker gotowy." "Krok 1 / 4  ✓" $C_GREEN
-Start-Sleep -Milliseconds 400
-
-# ── Step 2: git pull ─────────────────────────────────────────────────────────
-Set-Step 40 "Pobieranie aktualizacji..." "Krok 2 / 4 — git pull"
-Push-Location $PSScriptRoot
-& git pull --quiet 2>&1 | Out-Null
-Pop-Location
-
-Set-Step 55 "Aktualizacja pobrana." "Krok 2 / 4  ✓" $C_GREEN
+Set-Progress 28 "Docker gotowy" 1
 Start-Sleep -Milliseconds 300
 
-# ── Step 3: docker-compose up ────────────────────────────────────────────────
-Set-Step 65 "Uruchamianie kontenera..." "Krok 3 / 4 — docker-compose up -d"
-Push-Location $PSScriptRoot
-& docker-compose up -d 2>&1 | Out-Null
-Pop-Location
-
-Set-Step 80 "Kontener uruchomiony." "Krok 3 / 4  ✓" $C_GREEN
+# Krok 2: git pull
+Set-Progress 35 "Pobieranie aktualizacji..." 1
+git pull --quiet 2>&1 | Out-Null
+Set-Progress 50 "Pobrano aktualizacje" 2
 Start-Sleep -Milliseconds 300
 
-# ── Step 4: health check ─────────────────────────────────────────────────────
-Set-Step 85 "Czekam az aplikacja bedzie gotowa..." "Krok 4 / 4"
+# Krok 3: docker-compose up
+Set-Progress 58 "Uruchamianie kontenera..." 2
+docker-compose up -d 2>&1 | Out-Null
+Set-Progress 75 "Kontener uruchomiony" 3
+Start-Sleep -Milliseconds 300
+
+# Krok 4: health check
+Set-Progress 80 "Czekam az aplikacja bedzie gotowa..." 3
 $w = 0
 while ($w -lt 90) {
     try {
@@ -179,22 +228,22 @@ while ($w -lt 90) {
         if ($r.StatusCode -eq 200) { break }
     } catch {}
     Start-Sleep -Seconds 2; $w += 2
-    Set-Step ([math]::Min(85 + $w, 98)) "Czekam az aplikacja bedzie gotowa..." "Krok 4 / 4 — $w s"
+    Set-Progress ([math]::Min(80 + $w, 98)) "Czekam... ($w s)" 3
 }
 
-Set-Step 100 "Aplikacja gotowa!" "" $C_GREEN
-Start-Sleep -Milliseconds 500
+# Gotowe
+for ($i = 0; $i -lt 4; $i++) {
+    $stepLabels[$i].ForeColor = $GREEN
+    $stepLabels[$i].Text = [char]0x2713 + "  $($steps[$i])"
+}
+$pbFill.Width    = 432
+$pbFill.BackColor = $GREEN
+$lbStatus.Text   = "Aplikacja dziala na localhost:8080"
+$lbStatus.ForeColor = $GREEN
+$btnOpen.Visible = $true
+$btnStop.Visible = $true
+$form.Refresh(); DoEvents
 
 Start-Process "http://localhost:8080"
 
-# ── Running state ─────────────────────────────────────────────────────────────
-$lbStatus.Text      = "Aplikacja dziala!"
-$lbStatus.ForeColor = $C_GREEN
-$lbDetail.Text      = "Kliknij przycisk ponizej aby zatrzymac."
-$lbDetail.ForeColor = $C_MUTED
-$lbUrl.ForeColor    = $C_BLUE
-$lbVnc.ForeColor    = $C_BLUE
-$btnStop.Visible    = $true
-$form.Refresh()
-
-[System.Windows.Forms.Application]::Run($form)
+[Windows.Forms.Application]::Run($form)
