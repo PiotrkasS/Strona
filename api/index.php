@@ -1,7 +1,7 @@
 <?php
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
 header("Access-Control-Allow-Origin: $origin");
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -13,10 +13,11 @@ $path = preg_replace('#^/api#', '', $uri);
 $method = $_SERVER['REQUEST_METHOD'];
 
 match (true) {
-    $path === '/tests'        && $method === 'GET'  => handleListTests(),
-    $path === '/run'          && $method === 'POST' => handleRun(),
-    $path === '/codegen'      && $method === 'POST' => handleCodegen(),
-    $path === '/file-content' && $method === 'GET'  => handleFileContent(),
+    $path === '/tests'        && $method === 'GET'    => handleListTests(),
+    $path === '/tests'        && $method === 'DELETE' => handleDeleteTest(),
+    $path === '/run'          && $method === 'POST'   => handleRun(),
+    $path === '/codegen'      && $method === 'POST'   => handleCodegen(),
+    $path === '/file-content' && $method === 'GET'    => handleFileContent(),
     default => respond(404, ['error' => 'Endpoint not found']),
 };
 
@@ -298,6 +299,31 @@ function handleCodegen(): void
         'path'     => 'panel/' . $filename,
     ]);
     flush();
+}
+
+function handleDeleteTest(): void
+{
+    $relPath  = $_GET['path'] ?? '';
+    $testsDir = realpath(__DIR__ . '/../tests');
+
+    if (!$testsDir || $relPath === '') {
+        respond(400, ['error' => 'Brak ścieżki.']);
+        return;
+    }
+
+    $abs = realpath($testsDir . '/' . ltrim($relPath, '/'));
+    if (!$abs || !str_starts_with($abs, $testsDir) || !is_file($abs)) {
+        respond(404, ['error' => 'Plik nie istnieje.']);
+        return;
+    }
+
+    if (!str_contains($abs, '.spec.')) {
+        respond(400, ['error' => 'Można usuwać tylko pliki spec.']);
+        return;
+    }
+
+    unlink($abs);
+    respond(200, ['ok' => true]);
 }
 
 function handleFileContent(): void

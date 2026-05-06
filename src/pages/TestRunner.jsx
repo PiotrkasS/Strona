@@ -5,31 +5,37 @@ export default function TestRunner() {
   const [files, setFiles]           = useState([]);
   const [loading, setLoading]       = useState(true);
   const [fetchError, setFetchError] = useState(null);
-  // selections: { [path]: string[] } — selected test names per file
   const [selections, setSelections] = useState({});
   const [expanded, setExpanded]     = useState({});
-  const [headed, setHeaded]         = useState(false);
+  const [headed, setHeaded]         = useState(true);
   const [running, setRunning]       = useState(false);
   const [lines, setLines]           = useState([]);
   const [progress, setProgress]     = useState({ done: 0, total: 0 });
   const [runResult, setRunResult]   = useState(null);
   const [runError, setRunError]     = useState(null);
 
-  useEffect(() => {
-    fetch('/api/tests')
-      .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
+  const loadTests = useCallback(() => {
+    setLoading(true);
+    setFetchError(null);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 12000);
+
+    fetch('/api/tests', { signal: ctrl.signal })
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`); return r.json(); })
       .then(d => {
         const f = d.files ?? [];
         setFiles(f);
         const sel = {};
         const exp = {};
-        f.forEach(file => { sel[file.path] = []; exp[file.path] = true; });
+        f.forEach(file => { sel[file.path] = [...file.tests]; exp[file.path] = true; });
         setSelections(sel);
         setExpanded(exp);
       })
-      .catch(e => setFetchError(e.message))
-      .finally(() => setLoading(false));
+      .catch(e => setFetchError(e.name === 'AbortError' ? 'Timeout — serwer nie odpowiada. Sprawdź czy Docker działa.' : e.message))
+      .finally(() => { clearTimeout(timer); setLoading(false); });
   }, []);
+
+  useEffect(() => { loadTests(); }, [loadTests]);
 
   // ── selection helpers ────────────────────────────────────────────────────
 
@@ -63,26 +69,32 @@ export default function TestRunner() {
   const totalSelected = files.reduce((n, f) => n + (selections[f.path]?.length ?? 0), 0);
   const totalTests    = files.reduce((n, f) => n + f.tests.length, 0);
 
+  // ── delete ───────────────────────────────────────────────────────────────
+
+  const deleteTest = useCallback(async (path) => {
+    const res = await fetch('/api/tests?path=' + encodeURIComponent(path), { method: 'DELETE' });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error ?? 'Błąd usuwania'); return; }
+    setFiles(prev => prev.filter(f => f.path !== path));
+    setSelections(prev => { const n = { ...prev }; delete n[path]; return n; });
+    setExpanded(prev => { const n = { ...prev }; delete n[path]; return n; });
+  }, []);
+
   // ── run ──────────────────────────────────────────────────────────────────
 
   const runTests = async () => {
     if (totalSelected === 0) return;
-    // Count total selected tests for progress bar
-    const total = files.reduce((n, f) => n + (selections[f.path]?.length ?? 0), 0);
-
+    const total = totalSelected;
     setRunning(true);
     setLines([]);
     setProgress({ done: 0, total });
     setRunResult(null);
     setRunError(null);
 
-    // Build payload: only files with ≥1 test selected
     const selectedFiles = files
       .filter(f => (selections[f.path]?.length ?? 0) > 0)
       .map(f => {
         const sel = selections[f.path];
-        const isAll = sel.length === f.tests.length;
-        return { path: f.path, tests: isAll ? null : sel };
+        return { path: f.path, tests: sel.length === f.tests.length ? null : sel };
       });
 
     try {
@@ -104,29 +116,26 @@ export default function TestRunner() {
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-
         buffer += decoder.decode(value, { stream: true });
         const events = buffer.split('\n\n');
         buffer = events.pop() ?? '';
 
         for (const event of events) {
-          const eventLines = event.split('\n');
-          let eventType = 'message';
-          let eventData = '';
-          for (const l of eventLines) {
-            if (l.startsWith('event: ')) eventType = l.slice(7).trim();
-            else if (l.startsWith('data: ')) eventData = l.slice(6);
+          const evLines = event.split('\n');
+          let evType = 'message', evData = '';
+          for (const l of evLines) {
+            if (l.startsWith('event: ')) evType = l.slice(7).trim();
+            else if (l.startsWith('data: ')) evData = l.slice(6);
           }
-          if (!eventData) continue;
-          const parsed = JSON.parse(eventData);
+          if (!evData) continue;
+          const parsed = JSON.parse(evData);
 
-          if (eventType === 'done') {
+          if (evType === 'done') {
             setRunResult(parsed);
             saveHistory(selectedFiles.map(f => f.path), parsed);
-          } else if (eventType === 'error') {
+          } else if (evType === 'error') {
             setRunError(parsed.message ?? 'Nieznany błąd');
           } else {
-            // detect completed test line (✓ or ✗ prefix from list reporter)
             if (/^\s*[✓✗×]\s+\d+/.test(parsed)) {
               setProgress(p => ({ ...p, done: Math.min(p.done + 1, p.total) }));
             }
@@ -141,21 +150,36 @@ export default function TestRunner() {
     }
   };
 
-  if (loading)    return <div className="empty"><div className="icon">⏳</div><h3>Ładowanie testów…</h3></div>;
-  if (fetchError) return <div className="alert alert-error">⚠ Błąd ładowania: {fetchError}</div>;
+  if (loading) return (
+    <div className="empty">
+      <div className="icon">⏳</div>
+      <h3>Ładowanie testów…</h3>
+      <p style={{ marginTop: 8, fontSize: 12 }}>Łączenie z API…</p>
+    </div>
+  );
+
+  if (fetchError) return (
+    <div style={{ padding: 32 }}>
+      <div className="alert alert-error" style={{ marginBottom: 16 }}>⚠ {fetchError}</div>
+      <button className="btn btn-ghost" onClick={loadTests}>↺ Spróbuj ponownie</button>
+    </div>
+  );
+
+  const hasOutput = lines.length > 0 || running || runResult || runError;
 
   return (
-    <div>
-      <h1 className="page-title">Uruchom testy</h1>
-      <p className="page-sub">Wybierz testy do uruchomienia i kliknij "Uruchom"</p>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ marginBottom: 8 }}>
+        <h1 className="page-title">Uruchom testy</h1>
+        <p className="page-sub">Wybierz testy i kliknij "Uruchom"</p>
+      </div>
 
       {/* ── toolbar ── */}
       <div className="toolbar">
         <button className="btn btn-ghost btn-sm" onClick={selectAll}>✔ Zaznacz wszystkie</button>
         <button className="btn btn-ghost btn-sm" onClick={deselectAll}>✖ Odznacz wszystkie</button>
 
-        {/* headed toggle */}
-        <label className="headed-toggle" title="Otwiera przeglądarkę na żywo (działa tylko lokalnie, nie w Docker)">
+        <label className="headed-toggle">
           <span className="headed-icon">🖥️</span>
           <span>Tryb wizualny</span>
           <div className={`toggle-switch ${headed ? 'on' : ''}`} onClick={() => setHeaded(v => !v)}>
@@ -166,100 +190,130 @@ export default function TestRunner() {
 
         <span className="toolbar-spacer" />
         <span style={{ color: 'var(--muted)', fontSize: 13 }}>
-          Wybrano: <strong style={{ color: 'var(--text)' }}>{totalSelected}</strong> / {totalTests} testów
+          Wybrano: <strong style={{ color: 'var(--text)' }}>{totalSelected}</strong> / {totalTests}
         </span>
-        <button
-          className="btn btn-primary"
-          onClick={runTests}
-          disabled={running || totalSelected === 0}
-        >
+        <button className="btn btn-primary" onClick={runTests} disabled={running || totalSelected === 0}>
           {running ? <><div className="spinner" /> Uruchamianie…</> : '▶ Uruchom wybrane'}
         </button>
       </div>
 
-      {/* ── file cards ── */}
-      {files.length === 0 && (
-        <div className="empty">
-          <div className="icon">🔍</div>
-          <h3>Brak plików testów</h3>
-          <p>Dodaj pliki <code>*.spec.ts</code> do folderu <code>tests/</code></p>
-        </div>
-      )}
+      {/* ── two-panel split ── */}
+      <div className="runner-split">
 
-      {files.map(file => {
-        const state    = fileState(file.path, file.tests);
-        const selCount = selections[file.path]?.length ?? 0;
-        const isExp    = expanded[file.path];
-
-        return (
-          <div key={file.path} className={`file-card ${state !== 'none' ? 'file-card-active' : ''}`}>
-            <div className="file-header">
-              <FileCheckbox
-                state={state}
-                onChange={() => toggleFile(file.path, file.tests)}
-              />
-              <div className="file-header-left" onClick={() => toggleExpand(file.path)}>
-                <span className={`file-chevron${isExp ? ' open' : ''}`}>▶</span>
-                <div>
-                  <div className="file-name">{file.name}</div>
-                  <div className="file-category">{file.category}</div>
-                </div>
-              </div>
-              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-                {state !== 'none' && (
-                  <span className="sel-chip">{selCount} / {file.tests.length}</span>
-                )}
-                <span className="file-badge">{file.tests.length} testów</span>
-                <span style={{ color: 'var(--muted)', fontSize: 11, fontFamily: 'monospace' }}>{file.path}</span>
-              </div>
+        {/* LEFT — test list */}
+        <div className="runner-panel runner-panel-left">
+          {files.length === 0 && (
+            <div className="empty">
+              <div className="icon">🔍</div>
+              <h3>Brak plików testów</h3>
+              <p>Dodaj pliki <code>*.spec.ts</code> do folderu <code>tests/</code></p>
             </div>
+          )}
 
-            {isExp && file.tests.length > 0 && (
-              <div className="file-body">
-                <ul className="test-list">
-                  {file.tests.map((name, i) => {
-                    const checked = (selections[file.path] ?? []).includes(name);
-                    return (
-                      <li key={i} className={`test-item ${checked ? 'test-item-checked' : ''}`}>
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleTest(file.path, name)}
-                          />
-                          <span className="test-emoji">🧪</span>
-                          <span>{name}</span>
-                        </label>
-                      </li>
-                    );
-                  })}
-                </ul>
+          {files.map(file => {
+            const state    = fileState(file.path, file.tests);
+            const selCount = selections[file.path]?.length ?? 0;
+            const isExp    = expanded[file.path];
+
+            return (
+              <div key={file.path} className={`file-card ${state !== 'none' ? 'file-card-active' : ''}`}>
+                <div className="file-header">
+                  <FileCheckbox state={state} onChange={() => toggleFile(file.path, file.tests)} />
+                  <div className="file-header-left" onClick={() => toggleExpand(file.path)}>
+                    <span className={`file-chevron${isExp ? ' open' : ''}`}>▶</span>
+                    <div>
+                      <div className="file-name">{file.name}</div>
+                      <div className="file-category">{file.category}</div>
+                    </div>
+                  </div>
+                  <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+                    {state !== 'none' && <span className="sel-chip">{selCount}/{file.tests.length}</span>}
+                    <span className="file-badge">{file.tests.length} testów</span>
+                    <DeleteButton path={file.path} onDelete={deleteTest} />
+                  </div>
+                </div>
+
+                {isExp && file.tests.length > 0 && (
+                  <div className="file-body">
+                    <ul className="test-list">
+                      {file.tests.map((name, i) => {
+                        const checked = (selections[file.path] ?? []).includes(name);
+                        return (
+                          <li key={i} className={`test-item ${checked ? 'test-item-checked' : ''}`}>
+                            <label>
+                              <input type="checkbox" checked={checked} onChange={() => toggleTest(file.path, name)} />
+                              <span className="test-emoji">🧪</span>
+                              <span>{name}</span>
+                            </label>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        );
-      })}
+            );
+          })}
+        </div>
 
-      {runError && <div className="alert alert-error" style={{ marginTop: 16 }}>⚠ Błąd: {runError}</div>}
+        {/* RIGHT — output panel */}
+        <div className="runner-panel runner-panel-right">
+          {!hasOutput && (
+            <div className="runner-right-empty">
+              <div style={{ fontSize: 32, marginBottom: 12 }}>▶</div>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>Tu pojawi się wynik testów</div>
+              <div style={{ fontSize: 12 }}>Wybierz testy po lewej i kliknij "Uruchom"</div>
+              {headed && (
+                <div style={{ marginTop: 16, fontSize: 12 }}>
+                  🖥️ Tryb wizualny włączony — przeglądarka otworzy się w{' '}
+                  <a href="http://localhost:7900/vnc_auto.html" target="_blank" rel="noreferrer"
+                     style={{ color: 'var(--primary)' }}>localhost:7900</a>
+                </div>
+              )}
+            </div>
+          )}
 
-      {/* ── progress bar ── */}
-      {progress.total > 0 && (running || runResult) && (
-        <ProgressBar done={progress.done} total={progress.total} success={runResult?.success} />
-      )}
+          {runError && <div className="alert alert-error">⚠ Błąd: {runError}</div>}
 
-      {(lines.length > 0 || running) && <Terminal lines={lines} running={running} />}
+          {progress.total > 0 && (running || runResult) && (
+            <ProgressBar done={progress.done} total={progress.total} success={runResult?.success} />
+          )}
 
-      {runResult && <ResultsPanel result={runResult} />}
+          {(lines.length > 0 || running) && <Terminal lines={lines} running={running} />}
+
+          {runResult && <ResultsPanel result={runResult} />}
+        </div>
+      </div>
     </div>
+  );
+}
+
+// ── DeleteButton ──────────────────────────────────────────────────────────────
+
+function DeleteButton({ path, onDelete }) {
+  const [confirm, setConfirm] = useState(false);
+
+  if (confirm) return (
+    <span style={{ display: 'flex', gap: 4 }}>
+      <button className="btn btn-danger btn-sm" onClick={e => { e.stopPropagation(); onDelete(path); }}
+        style={{ padding: '3px 10px', fontSize: 11 }}>Usuń</button>
+      <button className="btn btn-ghost btn-sm" onClick={e => { e.stopPropagation(); setConfirm(false); }}
+        style={{ padding: '3px 8px', fontSize: 11 }}>✕</button>
+    </span>
+  );
+
+  return (
+    <button className="btn-delete" title="Usuń plik testu"
+      onClick={e => { e.stopPropagation(); setConfirm(true); }}>🗑</button>
   );
 }
 
 // ── ProgressBar ───────────────────────────────────────────────────────────────
 
 function ProgressBar({ done, total, success }) {
-  const pct     = total > 0 ? Math.round((done / total) * 100) : 0;
-  const isDone  = done >= total;
-  const color   = isDone ? (success === false ? 'var(--error)' : 'var(--success)') : 'var(--primary)';
+  const pct    = total > 0 ? Math.round((done / total) * 100) : 0;
+  const isDone = done >= total;
+  const color  = isDone ? (success === false ? 'var(--error)' : 'var(--success)') : 'var(--primary)';
 
   return (
     <div className="progress-wrap">
@@ -275,22 +329,14 @@ function ProgressBar({ done, total, success }) {
   );
 }
 
-// ── FileCheckbox (supports indeterminate) ─────────────────────────────────────
+// ── FileCheckbox ──────────────────────────────────────────────────────────────
 
 function FileCheckbox({ state, onChange }) {
   const ref = useRef(null);
-  useEffect(() => {
-    if (ref.current) ref.current.indeterminate = state === 'some';
-  }, [state]);
+  useEffect(() => { if (ref.current) ref.current.indeterminate = state === 'some'; }, [state]);
   return (
-    <input
-      ref={ref}
-      type="checkbox"
-      className="file-check"
-      checked={state === 'all'}
-      onChange={onChange}
-      onClick={e => e.stopPropagation()}
-    />
+    <input ref={ref} type="checkbox" className="file-check"
+      checked={state === 'all'} onChange={onChange} onClick={e => e.stopPropagation()} />
   );
 }
 
@@ -298,9 +344,7 @@ function FileCheckbox({ state, onChange }) {
 
 function Terminal({ lines, running }) {
   const ref = useRef(null);
-  useEffect(() => {
-    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
-  }, [lines]);
+  useEffect(() => { if (ref.current) ref.current.scrollTop = ref.current.scrollHeight; }, [lines]);
 
   return (
     <div className="terminal" ref={ref}>
@@ -321,8 +365,6 @@ function lineClass(line) {
   if (/warning/i.test(line))               return 'warn';
   return '';
 }
-
-// ── helpers ───────────────────────────────────────────────────────────────────
 
 function parseSummary(results) {
   if (!results?.stats) return { passed: 0, failed: 0, skipped: 0 };

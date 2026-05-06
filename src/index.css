@@ -544,3 +544,61 @@ a { color: inherit; text-decoration: none; }
 }
 .history-item:hover          { border-color: var(--primary); }
 .history-item.selected       { border-color: var(--primary); background: rgba(59,130,246,.06); }
+
+/* ── Runner two-panel split ──────────────────── */
+.runner-split {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+}
+.runner-panel {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
+}
+.runner-panel-left  { flex: 0 0 42%; max-width: 42%; }
+.runner-panel-right { flex: 1; min-width: 0; }
+
+.runner-right-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 260px;
+  color: var(--muted);
+  text-align: center;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 32px;
+}
+
+/* terminal fills available space in right panel */
+.runner-panel-right .terminal {
+  flex: 1;
+  max-height: none;
+  min-height: 200px;
+  margin-top: 0;
+}
+
+/* ── Delete button ───────────────────────────── */
+.btn-delete {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity .15s, background .15s;
+  line-height: 1;
+}
+.file-card:hover .btn-delete { opacity: 1; }
+.btn-delete:hover { background: rgba(239,68,68,.15); }
+
+@media (max-width: 900px) {
+  .runner-split { flex-direction: column; }
+  .runner-panel-left { flex: none; max-width: 100%; }
+}
