@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import ResultsPanel from './ResultsPanel.jsx';
+import EditorModal from '../components/EditorModal.jsx';
 
 export default function TestRunner() {
   const [files, setFiles]           = useState([]);
@@ -8,6 +9,7 @@ export default function TestRunner() {
   const [selections, setSelections] = useState({});
   const [expanded, setExpanded]     = useState({});
   const [headed, setHeaded]         = useState(true);
+  const [editFile, setEditFile]     = useState(null); // { path, name }
   const [running, setRunning]       = useState(false);
   const [lines, setLines]           = useState([]);
   const [progress, setProgress]     = useState({ done: 0, total: 0 });
@@ -229,6 +231,10 @@ export default function TestRunner() {
                       ? <span className="sel-chip">{selCount} / {file.tests.length}</span>
                       : <span className="file-badge">{file.tests.length} testów</span>
                     }
+                    <button className="btn-icon" title="Edytuj plik"
+                      onClick={e => { e.stopPropagation(); setEditFile({ path: file.path, name: file.name }); }}>
+                      ✏️
+                    </button>
                     <DeleteButton path={file.path} onDelete={deleteTest} />
                   </div>
                 </div>
@@ -284,6 +290,15 @@ export default function TestRunner() {
           {runResult && <ResultsPanel result={runResult} />}
         </div>
       </div>
+
+      {editFile && (
+        <EditorModal
+          path={editFile.path}
+          name={editFile.name}
+          onClose={() => setEditFile(null)}
+          onSaved={loadTests}
+        />
+      )}
     </div>
   );
 }

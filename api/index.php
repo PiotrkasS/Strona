@@ -1,7 +1,7 @@
 <?php
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
 header("Access-Control-Allow-Origin: $origin");
-header('Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS');
+header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -18,6 +18,7 @@ match (true) {
     $path === '/run'          && $method === 'POST'   => handleRun(),
     $path === '/codegen'      && $method === 'POST'   => handleCodegen(),
     $path === '/file-content' && $method === 'GET'    => handleFileContent(),
+    $path === '/file-content' && $method === 'PUT'    => handleSaveFile(),
     default => respond(404, ['error' => 'Endpoint not found']),
 };
 
@@ -361,6 +362,34 @@ function handleFileContent(): void
     }
 
     respond(200, ['content' => file_get_contents($abs)]);
+}
+
+function handleSaveFile(): void
+{
+    $body     = json_decode(file_get_contents('php://input'), true) ?? [];
+    $relPath  = $body['path']    ?? '';
+    $content  = $body['content'] ?? null;
+    $testsDir = realpath(__DIR__ . '/../tests');
+
+    if (!$testsDir || $relPath === '' || $content === null) {
+        respond(400, ['error' => 'Brak ścieżki lub treści.']);
+        return;
+    }
+
+    // Build absolute path — must stay inside tests dir and be a spec file
+    $candidate = $testsDir . '/' . ltrim($relPath, '/');
+    $abs       = realpath($candidate) ?: $candidate;
+    if (!str_starts_with(realpath(dirname($abs)) . '/', $testsDir . '/')) {
+        respond(403, ['error' => 'Niedozwolona ścieżka.']);
+        return;
+    }
+    if (!str_contains(basename($abs), '.spec.')) {
+        respond(403, ['error' => 'Można edytować tylko pliki .spec.']);
+        return;
+    }
+
+    file_put_contents($abs, $content);
+    respond(200, ['ok' => true]);
 }
 
 // ─── SSE helpers ─────────────────────────────────────────────────────────────
