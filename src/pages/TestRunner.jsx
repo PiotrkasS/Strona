@@ -92,6 +92,8 @@ export default function TestRunner() {
     setRunResult(null);
     setRunError(null);
 
+    if (headed) window.open('http://localhost:7900/vnc_auto.html', '_blank');
+
     const selectedFiles = files
       .filter(f => (selections[f.path]?.length ?? 0) > 0)
       .map(f => {
@@ -279,12 +281,12 @@ export default function TestRunner() {
             </div>
           )}
 
-          {running && headed && (
+          {headed && (running || !!runResult) && (
             <div className="alert alert-info" style={{ marginBottom: 12 }}>
-              🖥️ Przeglądarka otwarta w Docker —{' '}
+              🖥️ Tryb wizualny — przeglądarka otwarta w Docker:{' '}
               <a href="http://localhost:7900/vnc_auto.html" target="_blank" rel="noreferrer"
                  style={{ color: 'var(--primary)', fontWeight: 600 }}>
-                Otwórz podgląd na localhost:7900
+                localhost:7900
               </a>
             </div>
           )}
