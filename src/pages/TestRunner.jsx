@@ -168,11 +168,9 @@ export default function TestRunner() {
   const hasOutput = lines.length > 0 || running || runResult || runError;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ marginBottom: 8 }}>
-        <h1 className="page-title">Uruchom testy</h1>
-        <p className="page-sub">Wybierz testy i kliknij "Uruchom"</p>
-      </div>
+    <div>
+      <h1 className="page-title">Uruchom testy</h1>
+      <p className="page-sub">Wybierz testy i kliknij "Uruchom"</p>
 
       {/* ── toolbar ── */}
       <div className="toolbar">

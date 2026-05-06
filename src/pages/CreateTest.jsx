@@ -1,28 +1,59 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 export default function CreateTest() {
-  const [url, setUrl]               = useState('');
-  const [filename, setFilename]     = useState('');
-  const [recording, setRecording]   = useState(false);
-  const [lines, setLines]           = useState([]);
-  const [result, setResult]         = useState(null);
-  const [error, setError]           = useState(null);
-  const [fileContent, setFileContent] = useState(null);
-  const [showCode, setShowCode]     = useState(false);
-  const navigate                    = useNavigate();
-  const termRef                     = useRef(null);
+  const [url, setUrl]                   = useState('');
+  const [filename, setFilename]         = useState('');
+  const [recording, setRecording]       = useState(false);
+  const [lines, setLines]               = useState([]);
+  const [result, setResult]             = useState(null);
+  const [error, setError]               = useState(null);
+  const [liveCode, setLiveCode]         = useState('');
+  const [liveLines, setLiveLines]       = useState(0);
+  const [fileContent, setFileContent]   = useState(null);
+  const [showCode, setShowCode]         = useState(false);
+  const navigate                        = useNavigate();
+  const termRef                         = useRef(null);
+  const pollRef                         = useRef(null);
+  const recordingPathRef                = useRef('');
 
   const autoScroll = () => {
     if (termRef.current) termRef.current.scrollTop = termRef.current.scrollHeight;
   };
 
+  // Poll the output file for live code preview during recording
+  useEffect(() => {
+    if (recording && recordingPathRef.current) {
+      pollRef.current = setInterval(() => {
+        fetch('/api/file-content?path=' + encodeURIComponent(recordingPathRef.current))
+          .then(r => r.ok ? r.json() : null)
+          .then(d => {
+            if (d?.content) {
+              setLiveCode(d.content);
+              setLiveLines(d.content.split('\n').length);
+            }
+          })
+          .catch(() => {});
+      }, 2000);
+    } else {
+      clearInterval(pollRef.current);
+    }
+    return () => clearInterval(pollRef.current);
+  }, [recording]);
+
   const startRecording = async () => {
     if (!url || !filename) return;
+    const safeName = filename.replace(/[^a-z0-9\-_]/gi, '-').replace(/^-+|-+$/g, '') || 'nowy-test';
+    recordingPathRef.current = 'panel/' + safeName + (safeName.endsWith('.spec.ts') ? '' : '.spec.ts');
+
     setRecording(true);
     setLines([]);
+    setLiveCode('');
+    setLiveLines(0);
     setResult(null);
     setError(null);
+    setFileContent(null);
+    setShowCode(false);
 
     try {
       const response = await fetch('/api/codegen', {
@@ -63,7 +94,7 @@ export default function CreateTest() {
             if (parsed.success && parsed.path) {
               fetch('/api/file-content?path=' + encodeURIComponent(parsed.path))
                 .then(r => r.json())
-                .then(d => { if (d.content) { setFileContent(d.content); setShowCode(true); } })
+                .then(d => { if (d.content) { setFileContent(d.content); setLiveCode(d.content); setShowCode(true); } })
                 .catch(() => {});
             }
           } else if (evType === 'error') {
@@ -81,54 +112,35 @@ export default function CreateTest() {
   };
 
   const safeName = filename.replace(/[^a-z0-9\-_]/gi, '-').replace(/^-+|-+$/g, '') || '';
+  const isActive = recording || !!result;
 
   return (
     <div>
       <h1 className="page-title">Nagraj nowy test</h1>
       <p className="page-sub">Playwright otworzy przeglądarkę, nagra Twoje kliknięcia i zapisze je jako plik .spec.ts</p>
 
+      {/* ── form card ── */}
       <div className="card">
-        {/* URL */}
         <div className="form-group">
           <label className="form-label">Adres URL strony do testowania</label>
-          <input
-            type="url"
-            className="form-input"
-            placeholder="https://twoj-panel.pl/login"
-            value={url}
-            onChange={e => setUrl(e.target.value)}
-            disabled={recording}
-          />
+          <input type="url" className="form-input" placeholder="https://twoj-panel.pl/login"
+            value={url} onChange={e => setUrl(e.target.value)} disabled={recording} />
         </div>
 
-        {/* filename */}
         <div className="form-group">
           <label className="form-label">Nazwa pliku testu</label>
           <div className="form-row">
             <span className="form-addon">tests/panel/</span>
-            <input
-              type="text"
-              className="form-input"
-              placeholder="np. checkout-flow"
-              value={filename}
-              onChange={e => setFilename(e.target.value)}
-              disabled={recording}
-            />
+            <input type="text" className="form-input" placeholder="np. checkout-flow"
+              value={filename} onChange={e => setFilename(e.target.value)} disabled={recording} />
             <span className="form-addon">.spec.ts</span>
           </div>
-          {safeName && (
-            <div className="form-hint">
-              Zostanie utworzony: <code>tests/panel/{safeName}.spec.ts</code>
-            </div>
-          )}
+          {safeName && <div className="form-hint">Zostanie utworzony: <code>tests/panel/{safeName}.spec.ts</code></div>}
         </div>
 
         <div style={{ marginTop: 20 }}>
-          <button
-            className={`btn btn-primary btn-lg ${recording ? 'btn-recording' : ''}`}
-            onClick={startRecording}
-            disabled={recording || !url || !filename}
-          >
+          <button className={`btn btn-primary btn-lg ${recording ? 'btn-recording' : ''}`}
+            onClick={startRecording} disabled={recording || !url || !filename}>
             {recording
               ? <><div className="spinner" /> Nagrywanie — zamknij przeglądarkę gdy skończysz</>
               : '🎬 Uruchom nagrywanie'}
@@ -136,19 +148,19 @@ export default function CreateTest() {
         </div>
       </div>
 
-      {/* how it works */}
-      {!recording && !result && (
+      {/* ── how it works (hidden while recording) ── */}
+      {!isActive && (
         <div className="card how-card">
           <div className="section-title">📖 Jak to działa?</div>
           <div className="how-steps">
             {[
               ['1', 'Wpisz URL strony którą chcesz testować'],
-              ['2', 'Nadaj nazwę plikowi wynikowego testu'],
+              ['2', 'Nadaj nazwę plikowi testu'],
               ['3', 'Kliknij "Uruchom nagrywanie" — otworzy się przeglądarka Chromium'],
-              ['4', 'Klikaj po stronie jak normalny użytkownik (logowanie, formularze, przyciski…)'],
-              ['5', 'Zamknij przeglądarkę gdy skończysz nagrywanie'],
-              ['6', 'Playwright zapisze wszystkie akcje jako gotowy plik .spec.ts'],
-              ['7', 'Test pojawi się automatycznie w zakładce "Uruchom testy"'],
+              ['4', 'Klikaj po stronie — otworzy się też okno Playwright Inspector z kodem'],
+              ['5', 'Zamknij przeglądarkę gdy skończysz'],
+              ['6', 'Plik .spec.ts zostaje zapisany automatycznie'],
+              ['7', 'Test pojawi się w zakładce "Uruchom testy"'],
             ].map(([n, txt]) => (
               <div key={n} className="how-step">
                 <span className="how-num">{n}</span>
@@ -157,80 +169,73 @@ export default function CreateTest() {
             ))}
           </div>
           <div className="alert alert-info" style={{ marginTop: 16 }}>
-            💡 Podczas nagrywania możesz śledzić przeglądarkę na żywo pod adresem{' '}
+            💡 Podgląd przeglądarki na żywo:{' '}
             <a href="http://localhost:7900/vnc_auto.html" target="_blank" rel="noreferrer" style={{ color: 'var(--primary)' }}>
-              http://localhost:7900
+              localhost:7900/vnc_auto.html
             </a>
-            {' '}(tylko gdy używasz Docker).
+            {' '}(Docker). Zobaczysz tam zarówno przeglądarkę jak i Playwright Inspector z generowanym kodem.
           </div>
         </div>
       )}
 
-      {/* noVNC live banner — shown while recording */}
-      {recording && (
-        <div className="alert alert-info novnc-banner" style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>
-            🖥️ Przeglądarka otworzyła się wewnątrz kontenera Docker
-          </div>
-          <div style={{ marginBottom: 10 }}>
-            Klikaj po stronie tutaj (podgląd na żywo):
-          </div>
-          <a
-            href="http://localhost:7900/vnc_auto.html"
-            target="_blank"
-            rel="noreferrer"
-            className="btn btn-primary"
-            style={{ display: 'inline-block', marginBottom: 8 }}
-          >
-            🔗 Otwórz podgląd — localhost:7900
-          </a>
-          <div style={{ fontSize: 12, opacity: 0.7 }}>
-            Gdy skończysz klikać — zamknij przeglądarkę w podglądzie. Nagrywanie zakończy się automatycznie.
-          </div>
-        </div>
-      )}
+      {/* ── two-panel: terminal + live code ── */}
+      {isActive && (
+        <div className="record-split">
 
-      {/* live terminal */}
-      {(lines.length > 0 || recording) && (
-        <div className="terminal" ref={termRef} style={{ marginTop: 16 }}>
-          {lines.map((l, i) => <div key={i} className="terminal-line">{l || ' '}</div>)}
-          {recording && <span className="terminal-cursor" />}
-        </div>
-      )}
+          {/* LEFT — status + terminal */}
+          <div className="record-split-left">
+            {recording && (
+              <div className="alert alert-info" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 10 }}>
+                <div style={{ fontWeight: 600 }}>🖥️ Przeglądarka otwarta w kontenerze Docker</div>
+                <div style={{ fontSize: 12 }}>Klikaj po stronie w podglądzie noVNC:</div>
+                <a href="http://localhost:7900/vnc_auto.html" target="_blank" rel="noreferrer"
+                   className="btn btn-primary btn-sm">🔗 Otwórz noVNC — localhost:7900</a>
+                <div style={{ fontSize: 11, opacity: 0.8 }}>Zamknij przeglądarkę w noVNC gdy skończysz.</div>
+              </div>
+            )}
 
-      {/* result */}
-      {result?.success && (
-        <div style={{ marginTop: 16 }}>
-          <div className="alert alert-success">
-            ✅ Plik <strong>tests/panel/{result.filename}</strong> został nagrany!
-            <button className="btn btn-ghost btn-sm" style={{ marginLeft: 16 }} onClick={() => navigate('/tests')}>
-              → Przejdź do testów
-            </button>
-            {fileContent && (
-              <button className="btn btn-ghost btn-sm" style={{ marginLeft: 8 }} onClick={() => setShowCode(v => !v)}>
-                {showCode ? '▲ Ukryj kod' : '▼ Pokaż wygenerowany kod'}
-              </button>
+            {result?.success && (
+              <div className="alert alert-success">
+                ✅ Plik <strong>tests/panel/{result.filename}</strong> zapisany!
+                <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }}
+                  onClick={() => navigate('/tests')}>→ Przejdź do testów</button>
+              </div>
+            )}
+            {result && !result.success && (
+              <div className="alert alert-error">❌ Nagrywanie nie powiodło się lub plik nie został zapisany.</div>
+            )}
+            {error && <div className="alert alert-error">⚠ {error}</div>}
+
+            {(lines.length > 0 || recording) && (
+              <div className="terminal" ref={termRef} style={{ marginTop: 8 }}>
+                {lines.map((l, i) => <div key={i} className="terminal-line">{l || ' '}</div>)}
+                {recording && <span className="terminal-cursor" />}
+              </div>
             )}
           </div>
-          {showCode && fileContent && (
-            <div style={{ marginTop: 8 }}>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
-                tests/panel/{result.filename}
-              </div>
-              <pre className="terminal" style={{ whiteSpace: 'pre', overflowX: 'auto', maxHeight: 400, fontSize: 12 }}>
-                <code>{fileContent}</code>
-              </pre>
+
+          {/* RIGHT — live generated code */}
+          <div className="record-split-right">
+            <div className="record-code-header">
+              <span>📄 Generowany kod testu</span>
+              {liveLines > 0 && <span>{liveLines} linii</span>}
+              {recording && liveLines === 0 && <span style={{ fontStyle: 'italic' }}>oczekiwanie na kliknięcia…</span>}
             </div>
-          )}
+            {liveCode ? (
+              <pre>{liveCode}</pre>
+            ) : (
+              <div className="record-code-empty">
+                <div style={{ fontSize: 28, marginBottom: 10 }}>✍️</div>
+                <div>Kod pojawi się tutaj w miarę klikania po stronie</div>
+                {recording && (
+                  <div style={{ fontSize: 11, marginTop: 8 }}>
+                    Aktualizuje się co 2 sekundy
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      )}
-      {result && !result.success && (
-        <div className="alert alert-error" style={{ marginTop: 16 }}>
-          ❌ Nagrywanie nie powiodło się lub plik nie został zapisany.
-        </div>
-      )}
-      {error && (
-        <div className="alert alert-error" style={{ marginTop: 16 }}>⚠ {error}</div>
       )}
     </div>
   );
