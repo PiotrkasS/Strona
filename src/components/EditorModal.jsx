@@ -44,9 +44,8 @@ export default function EditorModal({ path, name, onClose, onSaved }) {
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error ?? 'Błąd zapisu');
-      setSaved(true);
       if (onSaved) onSaved();
-      setTimeout(() => setSaved(false), 2000);
+      onClose();
     } catch (e) {
       setError(e.message);
     } finally {

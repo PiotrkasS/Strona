@@ -29,7 +29,7 @@ export default function TestRunner() {
         setFiles(f);
         const sel = {};
         const exp = {};
-        f.forEach(file => { sel[file.path] = [...file.tests]; exp[file.path] = true; });
+        f.forEach(file => { sel[file.path] = []; exp[file.path] = true; });
         setSelections(sel);
         setExpanded(exp);
       })
@@ -276,6 +276,16 @@ export default function TestRunner() {
                      style={{ color: 'var(--primary)' }}>localhost:7900</a>
                 </div>
               )}
+            </div>
+          )}
+
+          {running && headed && (
+            <div className="alert alert-info" style={{ marginBottom: 12 }}>
+              🖥️ Przeglądarka otwarta w Docker —{' '}
+              <a href="http://localhost:7900/vnc_auto.html" target="_blank" rel="noreferrer"
+                 style={{ color: 'var(--primary)', fontWeight: 600 }}>
+                Otwórz podgląd na localhost:7900
+              </a>
             </div>
           )}
 
