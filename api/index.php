@@ -117,7 +117,7 @@ function handleRun(): void
     header('Content-Type: text/event-stream');
     header('Cache-Control: no-cache');
     header('X-Accel-Buffering: no');
-    header('Connection: keep-alive');
+    header('Connection: close');
 
     $headed     = !empty($options['headed']);
     $pauseAfter = !empty($options['pauseAfter']);
@@ -280,7 +280,7 @@ function handleCodegen(): void
     header('Content-Type: text/event-stream');
     header('Cache-Control: no-cache');
     header('X-Accel-Buffering: no');
-    header('Connection: keep-alive');
+    header('Connection: close');
 
     sseData('🎬 Uruchamianie Playwright Codegen…');
     sseData('🌐 Otwieranie: ' . $url);

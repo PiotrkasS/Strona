@@ -31,4 +31,4 @@ done
 [ $NOVNC_LAUNCHED -eq 0 ] && echo "[novnc] Not found – browser preview unavailable"
 
 echo "[php] Starting server on port 8000..."
-exec php -S 0.0.0.0:8000 router.php
+exec PHP_CLI_SERVER_WORKERS=4 php -S 0.0.0.0:8000 router.php
