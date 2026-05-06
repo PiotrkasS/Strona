@@ -111,6 +111,7 @@ function handleRun(): void
         'PLAYWRIGHT_JSON_OUTPUT_NAME' => $jsonTmp,
         'FORCE_COLOR'                 => '0',
         'CI'                          => $headed ? '0' : '1',
+        'DISPLAY'                     => getenv('DISPLAY') ?: ':99',
     ]);
 
     $descriptors = [
@@ -244,7 +245,10 @@ function handleCodegen(): void
         . ' --output ' . escapeshellarg($outputPath)
         . ' --target playwright-test';
 
-    $env         = array_merge(getenv() ?: [], ['FORCE_COLOR' => '0']);
+    $env         = array_merge(getenv() ?: [], [
+        'FORCE_COLOR' => '0',
+        'DISPLAY'     => getenv('DISPLAY') ?: ':99',
+    ]);
     $descriptors = [0 => ['pipe','r'], 1 => ['pipe','w'], 2 => ['pipe','w']];
     $proc        = proc_open($cmd, $descriptors, $pipes, $projectRoot, $env);
 
