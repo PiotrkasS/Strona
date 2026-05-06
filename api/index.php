@@ -13,8 +13,9 @@ $path = preg_replace('#^/api#', '', $uri);
 $method = $_SERVER['REQUEST_METHOD'];
 
 match (true) {
-    $path === '/tests' && $method === 'GET'  => handleListTests(),
-    $path === '/run'   && $method === 'POST' => handleRun(),
+    $path === '/tests'   && $method === 'GET'  => handleListTests(),
+    $path === '/run'     && $method === 'POST' => handleRun(),
+    $path === '/codegen' && $method === 'POST' => handleCodegen(),
     default => respond(404, ['error' => 'Endpoint not found']),
 };
 
@@ -190,6 +191,106 @@ function handleRun(): void
         'duration' => $duration,
         'success'  => $exitCode === 0,
         'results'  => $results,
+    ]);
+    flush();
+}
+
+function handleCodegen(): void
+{
+    $body     = json_decode(file_get_contents('php://input'), true) ?? [];
+    $url      = trim($body['url']      ?? '');
+    $filename = trim($body['filename'] ?? '');
+
+    if (!filter_var($url, FILTER_VALIDATE_URL)) {
+        respond(400, ['error' => 'Nieprawidłowy URL.']);
+        return;
+    }
+
+    // Sanitize filename: only alphanumeric, dash, underscore
+    $filename = preg_replace('/[^a-z0-9\-_]/i', '-', $filename);
+    $filename = trim($filename, '-') ?: 'nowy-test';
+    if (!str_ends_with($filename, '.spec.ts')) {
+        $filename .= '.spec.ts';
+    }
+
+    $projectRoot = realpath(__DIR__ . '/..');
+    $outputDir   = $projectRoot . '/tests/panel';
+    $outputPath  = $outputDir . '/' . $filename;
+
+    if (!is_dir($outputDir)) mkdir($outputDir, 0755, true);
+
+    if (file_exists($outputPath)) {
+        respond(409, ['error' => "Plik $filename już istnieje. Wybierz inną nazwę."]);
+        return;
+    }
+
+    // ── SSE streaming ────────────────────────────────────────────────────────
+    while (ob_get_level() > 0) ob_end_clean();
+    header('Content-Type: text/event-stream');
+    header('Cache-Control: no-cache');
+    header('X-Accel-Buffering: no');
+    header('Connection: keep-alive');
+
+    sseData('🎬 Uruchamianie Playwright Codegen…');
+    sseData('🌐 Otwieranie: ' . $url);
+    sseData('📝 Plik wynikowy: tests/panel/' . $filename);
+    sseData('');
+    sseData('👆 Klikaj po stronie — wszystkie akcje są nagrywane.');
+    sseData('🛑 Zamknij przeglądarkę gdy skończysz.');
+    flush();
+
+    $cmd = 'npx playwright codegen '
+        . escapeshellarg($url)
+        . ' --output ' . escapeshellarg($outputPath)
+        . ' --target playwright-test';
+
+    $env         = array_merge(getenv() ?: [], ['FORCE_COLOR' => '0']);
+    $descriptors = [0 => ['pipe','r'], 1 => ['pipe','w'], 2 => ['pipe','w']];
+    $proc        = proc_open($cmd, $descriptors, $pipes, $projectRoot, $env);
+
+    if (!is_resource($proc)) {
+        sseEvent('error', ['message' => 'Nie udało się uruchomić playwright codegen']);
+        return;
+    }
+
+    fclose($pipes[0]);
+    stream_set_blocking($pipes[1], false);
+    stream_set_blocking($pipes[2], false);
+
+    while (true) {
+        $status = proc_get_status($proc);
+        $chunk  = (fread($pipes[1], 65536) ?: '') . (fread($pipes[2], 65536) ?: '');
+        if ($chunk !== '') {
+            foreach (explode("\n", $chunk) as $line) sseData($line);
+            flush();
+        }
+        if (!$status['running']) break;
+        usleep(200000);
+    }
+
+    stream_set_blocking($pipes[1], true);
+    stream_set_blocking($pipes[2], true);
+    $tail = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
+    if ($tail) { foreach (explode("\n", $tail) as $l) sseData($l); }
+
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    $exitCode = proc_close($proc);
+    $exists   = file_exists($outputPath);
+
+    if ($exists) {
+        sseData('');
+        sseData('✅ Nagrywanie zakończone — plik zapisany.');
+    } else {
+        sseData('');
+        sseData('⚠ Plik nie został zapisany (przeglądarka zamknięta za wcześnie?).');
+    }
+
+    sseEvent('done', [
+        'exitCode' => $exitCode,
+        'success'  => $exists,
+        'filename' => $filename,
+        'path'     => 'panel/' . $filename,
     ]);
     flush();
 }

@@ -11,6 +11,7 @@ export default function TestRunner() {
   const [headed, setHeaded]         = useState(false);
   const [running, setRunning]       = useState(false);
   const [lines, setLines]           = useState([]);
+  const [progress, setProgress]     = useState({ done: 0, total: 0 });
   const [runResult, setRunResult]   = useState(null);
   const [runError, setRunError]     = useState(null);
 
@@ -66,8 +67,12 @@ export default function TestRunner() {
 
   const runTests = async () => {
     if (totalSelected === 0) return;
+    // Count total selected tests for progress bar
+    const total = files.reduce((n, f) => n + (selections[f.path]?.length ?? 0), 0);
+
     setRunning(true);
     setLines([]);
+    setProgress({ done: 0, total });
     setRunResult(null);
     setRunError(null);
 
@@ -121,6 +126,10 @@ export default function TestRunner() {
           } else if (eventType === 'error') {
             setRunError(parsed.message ?? 'Nieznany błąd');
           } else {
+            // detect completed test line (✓ or ✗ prefix from list reporter)
+            if (/^\s*[✓✗×]\s+\d+/.test(parsed)) {
+              setProgress(p => ({ ...p, done: Math.min(p.done + 1, p.total) }));
+            }
             setLines(prev => [...prev, parsed]);
           }
         }
@@ -233,9 +242,35 @@ export default function TestRunner() {
 
       {runError && <div className="alert alert-error" style={{ marginTop: 16 }}>⚠ Błąd: {runError}</div>}
 
+      {/* ── progress bar ── */}
+      {progress.total > 0 && (running || runResult) && (
+        <ProgressBar done={progress.done} total={progress.total} success={runResult?.success} />
+      )}
+
       {(lines.length > 0 || running) && <Terminal lines={lines} running={running} />}
 
       {runResult && <ResultsPanel result={runResult} />}
+    </div>
+  );
+}
+
+// ── ProgressBar ───────────────────────────────────────────────────────────────
+
+function ProgressBar({ done, total, success }) {
+  const pct     = total > 0 ? Math.round((done / total) * 100) : 0;
+  const isDone  = done >= total;
+  const color   = isDone ? (success === false ? 'var(--error)' : 'var(--success)') : 'var(--primary)';
+
+  return (
+    <div className="progress-wrap">
+      <div className="progress-meta">
+        <span>{isDone ? (success === false ? '❌ Zakończono z błędami' : '✅ Zakończono') : '⏳ Trwa…'}</span>
+        <span className="progress-count">{done} / {total} testów</span>
+        <span className="progress-pct">{pct}%</span>
+      </div>
+      <div className="progress-track">
+        <div className="progress-fill" style={{ width: `${pct}%`, background: color }} />
+      </div>
     </div>
   );
 }

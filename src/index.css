@@ -343,6 +343,65 @@ a { color: inherit; text-decoration: none; }
   word-break: break-all;
 }
 
+/* ── Progress bar ────────────────────────────── */
+.progress-wrap   { margin: 16px 0; }
+.progress-meta   { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-bottom: 6px; color: var(--muted); }
+.progress-count  { margin-left: auto; font-weight: 600; color: var(--text); }
+.progress-pct    { min-width: 36px; text-align: right; font-weight: 700; color: var(--text); }
+.progress-track  { height: 8px; background: var(--bg3); border-radius: 4px; overflow: hidden; }
+.progress-fill   { height: 100%; border-radius: 4px; transition: width .3s ease; }
+
+/* ── Form elements ───────────────────────────── */
+.form-group  { margin-bottom: 16px; }
+.form-label  { display: block; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+.form-input  {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 9px 12px;
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+  transition: border-color .15s;
+}
+.form-input:focus     { border-color: var(--primary); }
+.form-input:disabled  { opacity: .5; cursor: not-allowed; }
+.form-row    { display: flex; align-items: center; gap: 0; }
+.form-row .form-input { border-radius: 0; flex: 1; }
+.form-addon  {
+  padding: 9px 10px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  font-family: monospace;
+  white-space: nowrap;
+}
+.form-row .form-addon:first-child { border-radius: var(--radius) 0 0 var(--radius); border-right: none; }
+.form-row .form-addon:last-child  { border-radius: 0 var(--radius) var(--radius) 0; border-left: none; }
+.form-hint   { font-size: 11px; color: var(--muted); margin-top: 5px; }
+.form-hint code { color: var(--primary); }
+
+.btn-lg      { padding: 11px 24px; font-size: 15px; }
+.btn-recording { animation: pulse-btn 2s ease-in-out infinite; }
+@keyframes pulse-btn { 0%,100% { opacity: 1; } 50% { opacity: .75; } }
+
+/* ── How-steps card ──────────────────────────── */
+.how-card    { background: var(--bg2); }
+.how-steps   { display: flex; flex-direction: column; gap: 8px; }
+.how-step    { display: flex; align-items: flex-start; gap: 12px; font-size: 13px; }
+.how-num     {
+  flex-shrink: 0;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+
 /* ── Results bar (collapsible) ───────────────── */
 .results-wrap       { margin-top: 24px; }
 
