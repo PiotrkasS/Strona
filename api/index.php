@@ -19,6 +19,7 @@ match (true) {
     $path === '/codegen'      && $method === 'POST'   => handleCodegen(),
     $path === '/file-content' && $method === 'GET'    => handleFileContent(),
     $path === '/file-content' && $method === 'PUT'    => handleSaveFile(),
+    $path === '/ai-fix'       && $method === 'POST'   => handleAiFix(),
     default => respond(404, ['error' => 'Endpoint not found']),
 };
 
@@ -362,6 +363,71 @@ function handleFileContent(): void
     }
 
     respond(200, ['content' => file_get_contents($abs)]);
+}
+
+function handleAiFix(): void
+{
+    $body   = json_decode(file_get_contents('php://input'), true) ?? [];
+    $code   = trim($body['code'] ?? '');
+    $apiKey = getenv('ANTHROPIC_API_KEY') ?: '';
+
+    if ($code === '') {
+        respond(400, ['error' => 'Brak kodu do poprawy.']);
+        return;
+    }
+    if ($apiKey === '') {
+        respond(503, ['error' => 'Brak klucza API. Dodaj ANTHROPIC_API_KEY w docker-compose.yml i przebuduj kontener.']);
+        return;
+    }
+
+    $prompt = <<<PROMPT
+You are a Playwright TypeScript test expert. Fix the test code below so it runs without errors.
+
+Rules:
+1. Fix ambiguous locators — if a selector matches multiple elements, add a parent like locator('#id').getByRole(...) or use .first()
+2. Remove duplicate steps that appear twice in a row doing the same thing
+3. Add 1-2 meaningful expect() assertions (e.g. check page title, URL, or a visible element)
+4. Keep all the original user actions — do not simplify the flow
+5. Return ONLY valid TypeScript code. No markdown, no explanation, no code fences.
+
+Code to fix:
+$code
+PROMPT;
+
+    $payload = json_encode([
+        'model'      => 'claude-haiku-4-5-20251001',
+        'max_tokens' => 2048,
+        'messages'   => [['role' => 'user', 'content' => $prompt]],
+    ], JSON_UNESCAPED_UNICODE);
+
+    $ctx = stream_context_create(['http' => [
+        'method'  => 'POST',
+        'header'  => "Content-Type: application/json\r\nx-api-key: $apiKey\r\nanthropic-version: 2023-06-01",
+        'content' => $payload,
+        'timeout' => 30,
+        'ignore_errors' => true,
+    ]]);
+
+    $raw = @file_get_contents('https://api.anthropic.com/v1/messages', false, $ctx);
+    if ($raw === false) {
+        respond(502, ['error' => 'Błąd połączenia z API Anthropic.']);
+        return;
+    }
+
+    $resp  = json_decode($raw, true);
+    $fixed = $resp['content'][0]['text'] ?? null;
+
+    if (!$fixed) {
+        $apiErr = $resp['error']['message'] ?? 'Nieznany błąd API';
+        respond(502, ['error' => "Błąd API: $apiErr"]);
+        return;
+    }
+
+    // Strip markdown code fences if model added them anyway
+    $fixed = preg_replace('/^```(?:typescript|ts)?\s*/m', '', $fixed);
+    $fixed = preg_replace('/```\s*$/m', '', $fixed);
+
+    respond(200, ['code' => trim($fixed)]);
 }
 
 function handleSaveFile(): void

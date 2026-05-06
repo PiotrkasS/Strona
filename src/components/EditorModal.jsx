@@ -4,8 +4,10 @@ export default function EditorModal({ path, name, onClose, onSaved }) {
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving,  setSaving]  = useState(false);
+  const [fixing,  setFixing]  = useState(false);
   const [error,   setError]   = useState(null);
   const [saved,   setSaved]   = useState(false);
+  const [aiNote,  setAiNote]  = useState(null);
   const textareaRef           = useRef(null);
 
   useEffect(() => {
@@ -49,6 +51,28 @@ export default function EditorModal({ path, name, onClose, onSaved }) {
       setError(e.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const fixWithAi = async () => {
+    setFixing(true);
+    setError(null);
+    setAiNote(null);
+    try {
+      const res = await fetch('/api/ai-fix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: content }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? 'Błąd AI');
+      setContent(d.code);
+      setAiNote('✨ AI poprawił kod — sprawdź i zapisz.');
+      setSaved(false);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setFixing(false);
     }
   };
 
@@ -112,12 +136,18 @@ export default function EditorModal({ path, name, onClose, onSaved }) {
 
         {/* Footer */}
         <div className="modal-footer">
-          {error  && <span className="modal-err">⚠ {error}</span>}
-          {saved  && <span className="modal-ok">✅ Zapisano!</span>}
-          {!error && !saved && <span />}
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 }}>
+            {error  && <span className="modal-err">⚠ {error}</span>}
+            {saved  && <span className="modal-ok">✅ Zapisano!</span>}
+            {aiNote && !saved && <span style={{ color: '#a5b4fc', fontSize: 12 }}>{aiNote}</span>}
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
             <button className="btn btn-ghost" onClick={onClose}>Anuluj</button>
-            <button className="btn btn-primary" onClick={save} disabled={saving || loading}>
+            <button className="btn btn-ghost" onClick={fixWithAi} disabled={fixing || loading || saving}
+              title="Wyślij kod do Claude AI — poprawi selektory, usunie duplikaty, doda asercje">
+              {fixing ? <><div className="spinner" style={{ borderTopColor: '#a78bfa' }} /> Analizuję…</> : '🤖 Napraw z AI'}
+            </button>
+            <button className="btn btn-primary" onClick={save} disabled={saving || loading || fixing}>
               {saving ? <><div className="spinner" /> Zapisywanie…</> : '💾 Zapisz'}
             </button>
           </div>
