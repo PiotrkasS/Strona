@@ -22,6 +22,7 @@ for SCRIPT in \
     /usr/share/novnc/utils/launch.sh; do
     if [ -x "$SCRIPT" ]; then
         echo "[novnc] Starting on port 7900 via $SCRIPT..."
+        ln -sf /usr/share/novnc/vnc_auto.html /usr/share/novnc/index.html 2>/dev/null || true
         "$SCRIPT" --vnc localhost:5900 --listen 7900 --web /usr/share/novnc &
         NOVNC_LAUNCHED=1
         break

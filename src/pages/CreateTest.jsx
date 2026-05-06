@@ -146,7 +146,7 @@ export default function CreateTest() {
           </div>
           <div className="alert alert-info" style={{ marginTop: 16 }}>
             💡 Podczas nagrywania możesz śledzić przeglądarkę na żywo pod adresem{' '}
-            <a href="http://localhost:7900" target="_blank" rel="noreferrer" style={{ color: 'var(--primary)' }}>
+            <a href="http://localhost:7900/vnc_auto.html" target="_blank" rel="noreferrer" style={{ color: 'var(--primary)' }}>
               http://localhost:7900
             </a>
             {' '}(tylko gdy używasz Docker).
@@ -164,7 +164,7 @@ export default function CreateTest() {
             Klikaj po stronie tutaj (podgląd na żywo):
           </div>
           <a
-            href="http://localhost:7900"
+            href="http://localhost:7900/vnc_auto.html"
             target="_blank"
             rel="noreferrer"
             className="btn btn-primary"
