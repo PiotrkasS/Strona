@@ -145,8 +145,11 @@ export default function CreateTest() {
             ))}
           </div>
           <div className="alert alert-info" style={{ marginTop: 16 }}>
-            ⚠ Nagrywanie otwiera przeglądarkę — działa tylko przy uruchomieniu <strong>lokalnym</strong> (<code>npm run php</code>),
-            nie w trybie Docker (brak ekranu).
+            💡 Podczas nagrywania możesz śledzić przeglądarkę na żywo pod adresem{' '}
+            <a href="http://localhost:7900" target="_blank" rel="noreferrer" style={{ color: 'var(--primary)' }}>
+              http://localhost:7900
+            </a>
+            {' '}(tylko gdy używasz Docker).
           </div>
         </div>
       )}

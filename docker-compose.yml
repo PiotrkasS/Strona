@@ -2,10 +2,12 @@ services:
   app:
     build: .
     ports:
-      - "8080:8000"
+      - "8080:8000"   # aplikacja webowa
+      - "7900:7900"   # podgląd przeglądarki (noVNC)
     environment:
-      BASE_URL: ${BASE_URL:-http://localhost}
-      PANEL_USER: ${PANEL_USER:-admin}
-      PANEL_PASSWORD: ${PANEL_PASSWORD:-admin123}
+      BASE_URL:        ${BASE_URL:-http://localhost}
+      PANEL_USER:      ${PANEL_USER:-admin}
+      PANEL_PASSWORD:  ${PANEL_PASSWORD:-admin123}
+      DISPLAY:         ":99"
     volumes:
-      - ./tests:/app/tests:ro
+      - ./tests:/app/tests

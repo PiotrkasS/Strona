@@ -1,7 +1,10 @@
-FROM node:20-bookworm
+FROM mcr.microsoft.com/playwright:v1.56.0-noble
 
 RUN apt-get update && apt-get install -y \
     php-cli \
+    x11vnc \
+    novnc \
+    xvfb \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -9,12 +12,13 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
-RUN npx playwright install chromium --with-deps
-
 COPY . .
-
 RUN npm run build
 
-EXPOSE 8000
+# Start script: Xvfb + VNC + PHP server
+COPY docker-start.sh /docker-start.sh
+RUN chmod +x /docker-start.sh
 
-CMD ["php", "-S", "0.0.0.0:8000", "router.php"]
+EXPOSE 8000 7900
+
+CMD ["/docker-start.sh"]
