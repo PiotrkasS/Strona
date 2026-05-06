@@ -199,6 +199,64 @@ a { color: inherit; text-decoration: none; }
 .toolbar        { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
 .toolbar-spacer { flex: 1; }
 
+/* ── Headed toggle ───────────────────────────── */
+.headed-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  user-select: none;
+}
+.headed-icon { font-size: 15px; }
+.headed-badge {
+  padding: 1px 7px;
+  background: var(--primary);
+  color: #fff;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+}
+.toggle-switch {
+  width: 36px; height: 20px;
+  background: var(--border);
+  border-radius: 10px;
+  position: relative;
+  cursor: pointer;
+  transition: background .2s;
+  flex-shrink: 0;
+}
+.toggle-switch.on { background: var(--primary); }
+.toggle-thumb {
+  position: absolute;
+  top: 3px; left: 3px;
+  width: 14px; height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  transition: left .2s;
+}
+.toggle-switch.on .toggle-thumb { left: 19px; }
+
+/* ── File card active state ──────────────────── */
+.file-card-active { border-color: rgba(59,130,246,.4); }
+.sel-chip {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: rgba(59,130,246,.2);
+  color: var(--primary);
+  font-weight: 700;
+}
+
+/* ── Individual test items ───────────────────── */
+.test-item-checked label { color: var(--text); }
+.test-emoji { font-size: 13px; }
+
 /* ── Terminal ────────────────────────────────── */
 .terminal {
   background: #060d1a;

@@ -59,7 +59,8 @@ function handleListTests(): void
 function handleRun(): void
 {
     $body          = json_decode(file_get_contents('php://input'), true) ?? [];
-    $selectedFiles = $body['files'] ?? [];
+    $selectedFiles = $body['files']   ?? [];
+    $options       = $body['options'] ?? [];
 
     if (empty($selectedFiles)) {
         respond(400, ['error' => 'Nie wybrano żadnych testów.']);
@@ -70,10 +71,21 @@ function handleRun(): void
     $testsDir    = realpath($projectRoot . '/tests');
 
     $fileParts = [];
-    foreach ($selectedFiles as $f) {
-        $abs = realpath($testsDir . '/' . ltrim($f, '/'));
-        if ($abs && str_starts_with($abs, $testsDir)) {
-            $fileParts[] = escapeshellarg($abs);
+    $grepParts = [];
+
+    foreach ($selectedFiles as $fileData) {
+        $path  = is_array($fileData) ? ($fileData['path']  ?? '') : $fileData;
+        $tests = is_array($fileData) ? ($fileData['tests'] ?? null) : null;
+
+        $abs = realpath($testsDir . '/' . ltrim($path, '/'));
+        if (!$abs || !str_starts_with($abs, $testsDir)) continue;
+
+        $fileParts[] = escapeshellarg($abs);
+
+        if (!empty($tests)) {
+            foreach ($tests as $t) {
+                $grepParts[] = preg_quote($t, '/');
+            }
         }
     }
 
@@ -90,13 +102,14 @@ function handleRun(): void
     header('X-Accel-Buffering: no');
     header('Connection: keep-alive');
 
+    $headed  = !empty($options['headed']);
     $jsonTmp = tempnam(sys_get_temp_dir(), 'pw_json_');
     $fileArg = implode(' ', $fileParts);
 
     $env = array_merge(getenv() ?: [], [
         'PLAYWRIGHT_JSON_OUTPUT_NAME' => $jsonTmp,
         'FORCE_COLOR'                 => '0',
-        'CI'                          => '1',
+        'CI'                          => $headed ? '0' : '1',
     ]);
 
     $descriptors = [
@@ -105,7 +118,13 @@ function handleRun(): void
         2 => ['pipe', 'w'],
     ];
 
-    $cmd  = 'npx playwright test ' . $fileArg . ' --reporter=json,list';
+    $cmd = 'npx playwright test ' . $fileArg . ' --reporter=json,list';
+    if (!empty($grepParts)) {
+        $cmd .= ' --grep ' . escapeshellarg(implode('|', $grepParts));
+    }
+    if ($headed) {
+        $cmd .= ' --headed';
+    }
     $proc = proc_open($cmd, $descriptors, $pipes, $projectRoot, $env);
 
     if (!is_resource($proc)) {

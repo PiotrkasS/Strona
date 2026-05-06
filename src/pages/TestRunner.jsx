@@ -5,8 +5,10 @@ export default function TestRunner() {
   const [files, setFiles]           = useState([]);
   const [loading, setLoading]       = useState(true);
   const [fetchError, setFetchError] = useState(null);
-  const [selected, setSelected]     = useState({});
+  // selections: { [path]: string[] } — selected test names per file
+  const [selections, setSelections] = useState({});
   const [expanded, setExpanded]     = useState({});
+  const [headed, setHeaded]         = useState(false);
   const [running, setRunning]       = useState(false);
   const [lines, setLines]           = useState([]);
   const [runResult, setRunResult]   = useState(null);
@@ -20,36 +22,73 @@ export default function TestRunner() {
         setFiles(f);
         const sel = {};
         const exp = {};
-        f.forEach(file => { sel[file.path] = false; exp[file.path] = true; });
-        setSelected(sel);
+        f.forEach(file => { sel[file.path] = []; exp[file.path] = true; });
+        setSelections(sel);
         setExpanded(exp);
       })
       .catch(e => setFetchError(e.message))
       .finally(() => setLoading(false));
   }, []);
 
-  const toggleFile    = useCallback(path => setSelected(p => ({ ...p, [path]: !p[path] })), []);
-  const toggleExpand  = useCallback(path => setExpanded(p => ({ ...p, [path]: !p[path] })), []);
-  const selectAll     = () => { const s = {}; files.forEach(f => { s[f.path] = true; }); setSelected(s); };
-  const deselectAll   = () => { const s = {}; files.forEach(f => { s[f.path] = false; }); setSelected(s); };
-  const selectedPaths = files.filter(f => selected[f.path]).map(f => f.path);
+  // ── selection helpers ────────────────────────────────────────────────────
+
+  const fileState = useCallback((path, allTests) => {
+    const sel = selections[path] ?? [];
+    if (sel.length === 0) return 'none';
+    if (sel.length === allTests.length) return 'all';
+    return 'some';
+  }, [selections]);
+
+  const toggleFile = useCallback((path, allTests) => {
+    setSelections(prev => {
+      const isAll = (prev[path] ?? []).length === allTests.length;
+      return { ...prev, [path]: isAll ? [] : [...allTests] };
+    });
+  }, []);
+
+  const toggleTest = useCallback((path, testName) => {
+    setSelections(prev => {
+      const cur = prev[path] ?? [];
+      const has = cur.includes(testName);
+      return { ...prev, [path]: has ? cur.filter(t => t !== testName) : [...cur, testName] };
+    });
+  }, []);
+
+  const toggleExpand = useCallback(path => setExpanded(p => ({ ...p, [path]: !p[path] })), []);
+
+  const selectAll   = () => setSelections(Object.fromEntries(files.map(f => [f.path, [...f.tests]])));
+  const deselectAll = () => setSelections(Object.fromEntries(files.map(f => [f.path, []])));
+
+  const totalSelected = files.reduce((n, f) => n + (selections[f.path]?.length ?? 0), 0);
+  const totalTests    = files.reduce((n, f) => n + f.tests.length, 0);
+
+  // ── run ──────────────────────────────────────────────────────────────────
 
   const runTests = async () => {
-    if (selectedPaths.length === 0) return;
+    if (totalSelected === 0) return;
     setRunning(true);
     setLines([]);
     setRunResult(null);
     setRunError(null);
 
+    // Build payload: only files with ≥1 test selected
+    const selectedFiles = files
+      .filter(f => (selections[f.path]?.length ?? 0) > 0)
+      .map(f => {
+        const sel = selections[f.path];
+        const isAll = sel.length === f.tests.length;
+        return { path: f.path, tests: isAll ? null : sel };
+      });
+
     try {
       const response = await fetch('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ files: selectedPaths }),
+        body: JSON.stringify({ files: selectedFiles, options: { headed } }),
       });
 
       if (!response.ok) {
-        const err = await response.json();
+        const err = await response.json().catch(() => ({}));
         throw new Error(err.error ?? response.statusText);
       }
 
@@ -62,8 +101,6 @@ export default function TestRunner() {
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-
-        // Parse SSE events (separated by double newline)
         const events = buffer.split('\n\n');
         buffer = events.pop() ?? '';
 
@@ -71,22 +108,19 @@ export default function TestRunner() {
           const eventLines = event.split('\n');
           let eventType = 'message';
           let eventData = '';
-
           for (const l of eventLines) {
             if (l.startsWith('event: ')) eventType = l.slice(7).trim();
             else if (l.startsWith('data: ')) eventData = l.slice(6);
           }
-
           if (!eventData) continue;
           const parsed = JSON.parse(eventData);
 
           if (eventType === 'done') {
             setRunResult(parsed);
-            saveHistory(selectedPaths, parsed);
+            saveHistory(selectedFiles.map(f => f.path), parsed);
           } else if (eventType === 'error') {
             setRunError(parsed.message ?? 'Nieznany błąd');
           } else {
-            // regular output line
             setLines(prev => [...prev, parsed]);
           }
         }
@@ -110,20 +144,31 @@ export default function TestRunner() {
       <div className="toolbar">
         <button className="btn btn-ghost btn-sm" onClick={selectAll}>✔ Zaznacz wszystkie</button>
         <button className="btn btn-ghost btn-sm" onClick={deselectAll}>✖ Odznacz wszystkie</button>
+
+        {/* headed toggle */}
+        <label className="headed-toggle" title="Otwiera przeglądarkę na żywo (działa tylko lokalnie, nie w Docker)">
+          <span className="headed-icon">🖥️</span>
+          <span>Tryb wizualny</span>
+          <div className={`toggle-switch ${headed ? 'on' : ''}`} onClick={() => setHeaded(v => !v)}>
+            <div className="toggle-thumb" />
+          </div>
+          {headed && <span className="headed-badge">HEADED</span>}
+        </label>
+
         <span className="toolbar-spacer" />
         <span style={{ color: 'var(--muted)', fontSize: 13 }}>
-          Wybrano: <strong style={{ color: 'var(--text)' }}>{selectedPaths.length}</strong> / {files.length} plików
+          Wybrano: <strong style={{ color: 'var(--text)' }}>{totalSelected}</strong> / {totalTests} testów
         </span>
         <button
           className="btn btn-primary"
           onClick={runTests}
-          disabled={running || selectedPaths.length === 0}
+          disabled={running || totalSelected === 0}
         >
           {running ? <><div className="spinner" /> Uruchamianie…</> : '▶ Uruchom wybrane'}
         </button>
       </div>
 
-      {/* ── file list ── */}
+      {/* ── file cards ── */}
       {files.length === 0 && (
         <div className="empty">
           <div className="icon">🔍</div>
@@ -132,57 +177,92 @@ export default function TestRunner() {
         </div>
       )}
 
-      {files.map(file => (
-        <div key={file.path} className="file-card">
-          <div className="file-header">
-            <input
-              type="checkbox"
-              className="file-check"
-              checked={!!selected[file.path]}
-              onChange={() => toggleFile(file.path)}
-              onClick={e => e.stopPropagation()}
-            />
-            <div className="file-header-left" onClick={() => toggleExpand(file.path)}>
-              <span className={`file-chevron${expanded[file.path] ? ' open' : ''}`}>▶</span>
-              <div>
-                <div className="file-name">{file.name}</div>
-                <div className="file-category">{file.category}</div>
+      {files.map(file => {
+        const state    = fileState(file.path, file.tests);
+        const selCount = selections[file.path]?.length ?? 0;
+        const isExp    = expanded[file.path];
+
+        return (
+          <div key={file.path} className={`file-card ${state !== 'none' ? 'file-card-active' : ''}`}>
+            <div className="file-header">
+              <FileCheckbox
+                state={state}
+                onChange={() => toggleFile(file.path, file.tests)}
+              />
+              <div className="file-header-left" onClick={() => toggleExpand(file.path)}>
+                <span className={`file-chevron${isExp ? ' open' : ''}`}>▶</span>
+                <div>
+                  <div className="file-name">{file.name}</div>
+                  <div className="file-category">{file.category}</div>
+                </div>
+              </div>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+                {state !== 'none' && (
+                  <span className="sel-chip">{selCount} / {file.tests.length}</span>
+                )}
+                <span className="file-badge">{file.tests.length} testów</span>
+                <span style={{ color: 'var(--muted)', fontSize: 11, fontFamily: 'monospace' }}>{file.path}</span>
               </div>
             </div>
-            <span className="file-badge">{file.tests.length} testów</span>
-            <span style={{ color: 'var(--muted)', fontSize: 11, marginLeft: 8, fontFamily: 'monospace' }}>{file.path}</span>
+
+            {isExp && file.tests.length > 0 && (
+              <div className="file-body">
+                <ul className="test-list">
+                  {file.tests.map((name, i) => {
+                    const checked = (selections[file.path] ?? []).includes(name);
+                    return (
+                      <li key={i} className={`test-item ${checked ? 'test-item-checked' : ''}`}>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleTest(file.path, name)}
+                          />
+                          <span className="test-emoji">🧪</span>
+                          <span>{name}</span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
           </div>
+        );
+      })}
 
-          {expanded[file.path] && file.tests.length > 0 && (
-            <div className="file-body">
-              <ul className="test-list">
-                {file.tests.map((name, i) => (
-                  <li key={i} className="test-item">
-                    <label><span>🧪</span> {name}</label>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      ))}
+      {runError && <div className="alert alert-error" style={{ marginTop: 16 }}>⚠ Błąd: {runError}</div>}
 
-      {runError && <div className="alert alert-error">⚠ Błąd: {runError}</div>}
-
-      {/* ── live terminal ── */}
       {(lines.length > 0 || running) && <Terminal lines={lines} running={running} />}
 
-      {/* ── structured results ── */}
       {runResult && <ResultsPanel result={runResult} />}
     </div>
   );
 }
 
-// ── Terminal component ────────────────────────────────────────────────────────
+// ── FileCheckbox (supports indeterminate) ─────────────────────────────────────
+
+function FileCheckbox({ state, onChange }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = state === 'some';
+  }, [state]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      className="file-check"
+      checked={state === 'all'}
+      onChange={onChange}
+      onClick={e => e.stopPropagation()}
+    />
+  );
+}
+
+// ── Terminal ──────────────────────────────────────────────────────────────────
 
 function Terminal({ lines, running }) {
   const ref = useRef(null);
-
   useEffect(() => {
     if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
   }, [lines]);
@@ -193,9 +273,7 @@ function Terminal({ lines, running }) {
         <div className="terminal-line muted">Uruchamianie playwright…</div>
       )}
       {lines.map((line, i) => (
-        <div key={i} className={`terminal-line ${lineClass(line)}`}>
-          {line || ' '}
-        </div>
+        <div key={i} className={`terminal-line ${lineClass(line)}`}>{line || ' '}</div>
       ))}
       {running && <span className="terminal-cursor" />}
     </div>
@@ -203,9 +281,9 @@ function Terminal({ lines, running }) {
 }
 
 function lineClass(line) {
-  if (/✓|passed|PASS/i.test(line))   return 'ok';
+  if (/✓|passed|PASS/i.test(line))        return 'ok';
   if (/✗|×|failed|FAIL|Error/i.test(line)) return 'err';
-  if (/warning/i.test(line))          return 'warn';
+  if (/warning/i.test(line))               return 'warn';
   return '';
 }
 
@@ -217,15 +295,12 @@ function parseSummary(results) {
   return { passed: expected, failed: unexpected, skipped };
 }
 
-function saveHistory(selectedPaths, data) {
+function saveHistory(paths, data) {
   const entry = {
-    id:       Date.now(),
-    time:     new Date().toISOString(),
-    files:    selectedPaths,
-    duration: data.duration,
-    success:  data.success,
-    summary:  parseSummary(data.results),
-    results:  data.results,
+    id: Date.now(), time: new Date().toISOString(),
+    files: paths, duration: data.duration,
+    success: data.success, summary: parseSummary(data.results),
+    results: data.results,
   };
   const history = JSON.parse(localStorage.getItem('pw_history') ?? '[]');
   history.unshift(entry);
