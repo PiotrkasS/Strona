@@ -217,19 +217,24 @@ export default function CreateTest() {
           </div>
 
           {/* RIGHT — noVNC during recording, code after */}
-          <div className="record-split-right" style={{ minHeight: 480 }}>
+          <div className="record-split-right" style={{ minHeight: 520 }}>
             {recording ? (
               <>
                 <div className="record-code-header">
-                  <span>🖥️ Podgląd przeglądarki — klikaj tutaj!</span>
+                  <span>🖥️ Podgląd na żywo — klikaj tutaj!</span>
                   <a href="http://localhost:7900/vnc_auto.html" target="_blank" rel="noreferrer"
-                     style={{ color: 'var(--primary)', fontSize: 11 }}>↗ otwórz pełny ekran</a>
+                     style={{ color: 'var(--primary)', fontSize: 11 }}>↗ pełny ekran</a>
                 </div>
                 <iframe
                   src="http://localhost:7900/vnc_auto.html"
                   style={{ width: '100%', height: 460, border: 'none', display: 'block' }}
                   title="noVNC – podgląd przeglądarki"
                 />
+                <div style={{ padding: '8px 14px', background: 'var(--bg3)', borderTop: '1px solid var(--border)', fontSize: 12, color: 'var(--muted)' }}>
+                  💡 <strong style={{ color: 'var(--text)' }}>Gdzie kod?</strong>{' '}
+                  W dolnym pasku przeglądarki (zakładka <strong style={{ color: 'var(--primary)' }}>Log</strong>) — widać każde kliknięcie na żywo.
+                  Prawa strona ekranu to Playwright Codegen z pełnym kodem.
+                </div>
               </>
             ) : (
               <>
