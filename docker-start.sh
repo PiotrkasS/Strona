@@ -22,7 +22,7 @@ for SCRIPT in \
     /usr/share/novnc/utils/launch.sh; do
     if [ -x "$SCRIPT" ]; then
         echo "[novnc] Starting on port 7900 via $SCRIPT..."
-        "$SCRIPT" --vnc localhost:5900 --listen 7900 &
+        "$SCRIPT" --vnc localhost:5900 --listen 7900 --web /usr/share/novnc &
         NOVNC_LAUNCHED=1
         break
     fi

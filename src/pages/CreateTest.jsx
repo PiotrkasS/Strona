@@ -154,6 +154,30 @@ export default function CreateTest() {
         </div>
       )}
 
+      {/* noVNC live banner — shown while recording */}
+      {recording && (
+        <div className="alert alert-info novnc-banner" style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>
+            🖥️ Przeglądarka otworzyła się wewnątrz kontenera Docker
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            Klikaj po stronie tutaj (podgląd na żywo):
+          </div>
+          <a
+            href="http://localhost:7900"
+            target="_blank"
+            rel="noreferrer"
+            className="btn btn-primary"
+            style={{ display: 'inline-block', marginBottom: 8 }}
+          >
+            🔗 Otwórz podgląd — localhost:7900
+          </a>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>
+            Gdy skończysz klikać — zamknij przeglądarkę w podglądzie. Nagrywanie zakończy się automatycznie.
+          </div>
+        </div>
+      )}
+
       {/* live terminal */}
       {(lines.length > 0 || recording) && (
         <div className="terminal" ref={termRef} style={{ marginTop: 16 }}>
