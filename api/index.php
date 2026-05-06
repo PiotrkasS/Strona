@@ -402,16 +402,17 @@ function handleFileContent(): void
 
 function handleAiFix(): void
 {
-    $body   = json_decode(file_get_contents('php://input'), true) ?? [];
-    $code   = trim($body['code'] ?? '');
-    $apiKey = getenv('ANTHROPIC_API_KEY') ?: '';
+    $body        = json_decode(file_get_contents('php://input'), true) ?? [];
+    $code        = trim($body['code'] ?? '');
+    $anthropicKey = getenv('ANTHROPIC_API_KEY') ?: '';
+    $groqKey      = getenv('GROQ_API_KEY')      ?: '';
 
     if ($code === '') {
         respond(400, ['error' => 'Brak kodu do poprawy.']);
         return;
     }
-    if ($apiKey === '') {
-        respond(503, ['error' => 'Brak klucza API. Dodaj ANTHROPIC_API_KEY w docker-compose.yml i przebuduj kontener.']);
+    if ($anthropicKey === '' && $groqKey === '') {
+        respond(503, ['error' => 'Brak klucza API. Dodaj ANTHROPIC_API_KEY (Anthropic) lub GROQ_API_KEY (darmowy – groq.com) do pliku .env i uruchom ponownie kontener.']);
         return;
     }
 
@@ -429,40 +430,75 @@ Code to fix:
 $code
 PROMPT;
 
+    // ── Try Anthropic first ───────────────────────────────────────────────────
+    if ($anthropicKey !== '') {
+        $payload = json_encode([
+            'model'      => 'claude-haiku-4-5-20251001',
+            'max_tokens' => 2048,
+            'messages'   => [['role' => 'user', 'content' => $prompt]],
+        ], JSON_UNESCAPED_UNICODE);
+
+        $ctx = stream_context_create(['http' => [
+            'method'  => 'POST',
+            'header'  => "Content-Type: application/json\r\nx-api-key: $anthropicKey\r\nanthropic-version: 2023-06-01",
+            'content' => $payload,
+            'timeout' => 30,
+            'ignore_errors' => true,
+        ]]);
+
+        $raw = @file_get_contents('https://api.anthropic.com/v1/messages', false, $ctx);
+        if ($raw !== false) {
+            $resp  = json_decode($raw, true);
+            $fixed = $resp['content'][0]['text'] ?? null;
+            if ($fixed) {
+                $fixed = preg_replace('/^```(?:typescript|ts)?\s*/m', '', $fixed);
+                $fixed = preg_replace('/```\s*$/m', '', $fixed);
+                respond(200, ['code' => trim($fixed), 'model' => 'Claude (Anthropic)']);
+                return;
+            }
+            $apiErr = $resp['error']['message'] ?? null;
+            if ($apiErr) {
+                respond(502, ['error' => "Błąd Anthropic API: $apiErr"]);
+                return;
+            }
+        }
+        // fall through to Groq if Anthropic failed
+    }
+
+    // ── Groq fallback (free) ──────────────────────────────────────────────────
     $payload = json_encode([
-        'model'      => 'claude-haiku-4-5-20251001',
+        'model'      => 'llama-3.3-70b-versatile',
         'max_tokens' => 2048,
         'messages'   => [['role' => 'user', 'content' => $prompt]],
     ], JSON_UNESCAPED_UNICODE);
 
     $ctx = stream_context_create(['http' => [
         'method'  => 'POST',
-        'header'  => "Content-Type: application/json\r\nx-api-key: $apiKey\r\nanthropic-version: 2023-06-01",
+        'header'  => "Content-Type: application/json\r\nAuthorization: Bearer $groqKey",
         'content' => $payload,
         'timeout' => 30,
         'ignore_errors' => true,
     ]]);
 
-    $raw = @file_get_contents('https://api.anthropic.com/v1/messages', false, $ctx);
+    $raw = @file_get_contents('https://api.groq.com/openai/v1/chat/completions', false, $ctx);
     if ($raw === false) {
-        respond(502, ['error' => 'Błąd połączenia z API Anthropic.']);
+        respond(502, ['error' => 'Błąd połączenia z Groq API.']);
         return;
     }
 
     $resp  = json_decode($raw, true);
-    $fixed = $resp['content'][0]['text'] ?? null;
+    $fixed = $resp['choices'][0]['message']['content'] ?? null;
 
     if (!$fixed) {
-        $apiErr = $resp['error']['message'] ?? 'Nieznany błąd API';
-        respond(502, ['error' => "Błąd API: $apiErr"]);
+        $apiErr = $resp['error']['message'] ?? 'Nieznany błąd Groq API';
+        respond(502, ['error' => "Błąd Groq: $apiErr"]);
         return;
     }
 
-    // Strip markdown code fences if model added them anyway
     $fixed = preg_replace('/^```(?:typescript|ts)?\s*/m', '', $fixed);
     $fixed = preg_replace('/```\s*$/m', '', $fixed);
 
-    respond(200, ['code' => trim($fixed)]);
+    respond(200, ['code' => trim($fixed), 'model' => 'Llama 3.3 (Groq)']);
 }
 
 function handleSaveFile(): void

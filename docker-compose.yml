@@ -10,6 +10,7 @@ services:
       PANEL_PASSWORD:  ${PANEL_PASSWORD:-admin123}
       DISPLAY:         ":99"
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GROQ_API_KEY:      ${GROQ_API_KEY:-}
     volumes:
       - ./tests:/app/tests
     healthcheck:

@@ -66,7 +66,7 @@ export default function EditorModal({ path, name, onClose, onSaved }) {
       const d = await res.json();
       if (!res.ok) throw new Error(d.error ?? 'Błąd AI');
       setContent(d.code);
-      setAiNote('✨ AI poprawił kod — sprawdź i zapisz.');
+      setAiNote(`✨ ${d.model ?? 'AI'} poprawił kod — sprawdź i zapisz.`);
       setSaved(false);
     } catch (e) {
       setError(e.message);
