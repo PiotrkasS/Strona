@@ -13,9 +13,10 @@ $path = preg_replace('#^/api#', '', $uri);
 $method = $_SERVER['REQUEST_METHOD'];
 
 match (true) {
-    $path === '/tests'   && $method === 'GET'  => handleListTests(),
-    $path === '/run'     && $method === 'POST' => handleRun(),
-    $path === '/codegen' && $method === 'POST' => handleCodegen(),
+    $path === '/tests'        && $method === 'GET'  => handleListTests(),
+    $path === '/run'          && $method === 'POST' => handleRun(),
+    $path === '/codegen'      && $method === 'POST' => handleCodegen(),
+    $path === '/file-content' && $method === 'GET'  => handleFileContent(),
     default => respond(404, ['error' => 'Endpoint not found']),
 };
 
@@ -297,6 +298,25 @@ function handleCodegen(): void
         'path'     => 'panel/' . $filename,
     ]);
     flush();
+}
+
+function handleFileContent(): void
+{
+    $relPath  = $_GET['path'] ?? '';
+    $testsDir = realpath(__DIR__ . '/../tests');
+
+    if (!$testsDir || $relPath === '') {
+        respond(400, ['error' => 'Brak ścieżki.']);
+        return;
+    }
+
+    $abs = realpath($testsDir . '/' . ltrim($relPath, '/'));
+    if (!$abs || !str_starts_with($abs, $testsDir) || !is_file($abs)) {
+        respond(404, ['error' => 'Plik nie istnieje.']);
+        return;
+    }
+
+    respond(200, ['content' => file_get_contents($abs)]);
 }
 
 // ─── SSE helpers ─────────────────────────────────────────────────────────────

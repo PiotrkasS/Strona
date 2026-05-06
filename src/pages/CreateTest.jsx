@@ -2,14 +2,16 @@ import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 export default function CreateTest() {
-  const [url, setUrl]           = useState('');
-  const [filename, setFilename] = useState('');
-  const [recording, setRecording] = useState(false);
-  const [lines, setLines]       = useState([]);
-  const [result, setResult]     = useState(null);
-  const [error, setError]       = useState(null);
-  const navigate                = useNavigate();
-  const termRef                 = useRef(null);
+  const [url, setUrl]               = useState('');
+  const [filename, setFilename]     = useState('');
+  const [recording, setRecording]   = useState(false);
+  const [lines, setLines]           = useState([]);
+  const [result, setResult]         = useState(null);
+  const [error, setError]           = useState(null);
+  const [fileContent, setFileContent] = useState(null);
+  const [showCode, setShowCode]     = useState(false);
+  const navigate                    = useNavigate();
+  const termRef                     = useRef(null);
 
   const autoScroll = () => {
     if (termRef.current) termRef.current.scrollTop = termRef.current.scrollHeight;
@@ -56,9 +58,19 @@ export default function CreateTest() {
           if (!evData) continue;
           const parsed = JSON.parse(evData);
 
-          if (evType === 'done')       setResult(parsed);
-          else if (evType === 'error') setError(parsed.message ?? 'Błąd nagrywania');
-          else { setLines(p => [...p, parsed]); autoScroll(); }
+          if (evType === 'done') {
+            setResult(parsed);
+            if (parsed.success && parsed.path) {
+              fetch('/api/file-content?path=' + encodeURIComponent(parsed.path))
+                .then(r => r.json())
+                .then(d => { if (d.content) { setFileContent(d.content); setShowCode(true); } })
+                .catch(() => {});
+            }
+          } else if (evType === 'error') {
+            setError(parsed.message ?? 'Błąd nagrywania');
+          } else {
+            setLines(p => [...p, parsed]); autoScroll();
+          }
         }
       }
     } catch (e) {
@@ -188,15 +200,28 @@ export default function CreateTest() {
 
       {/* result */}
       {result?.success && (
-        <div className="alert alert-success" style={{ marginTop: 16 }}>
-          ✅ Plik <strong>tests/panel/{result.filename}</strong> został nagrany!
-          <button
-            className="btn btn-ghost btn-sm"
-            style={{ marginLeft: 16 }}
-            onClick={() => navigate('/tests')}
-          >
-            → Przejdź do testów
-          </button>
+        <div style={{ marginTop: 16 }}>
+          <div className="alert alert-success">
+            ✅ Plik <strong>tests/panel/{result.filename}</strong> został nagrany!
+            <button className="btn btn-ghost btn-sm" style={{ marginLeft: 16 }} onClick={() => navigate('/tests')}>
+              → Przejdź do testów
+            </button>
+            {fileContent && (
+              <button className="btn btn-ghost btn-sm" style={{ marginLeft: 8 }} onClick={() => setShowCode(v => !v)}>
+                {showCode ? '▲ Ukryj kod' : '▼ Pokaż wygenerowany kod'}
+              </button>
+            )}
+          </div>
+          {showCode && fileContent && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
+                tests/panel/{result.filename}
+              </div>
+              <pre className="terminal" style={{ whiteSpace: 'pre', overflowX: 'auto', maxHeight: 400, fontSize: 12 }}>
+                <code>{fileContent}</code>
+              </pre>
+            </div>
+          )}
         </div>
       )}
       {result && !result.success && (
