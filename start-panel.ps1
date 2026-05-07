@@ -86,7 +86,7 @@ $sep.BackColor = $BORDER
 $form.Controls.Add($sep)
 
 # Kroki
-$steps = @("Sprawdzanie Docker", "Pobieranie aktualizacji", "Uruchamianie kontenera", "Aplikacja gotowa")
+$steps = @("Sprawdzanie Docker", "Pobieranie aktualizacji", "Budowanie i uruchamianie", "Aplikacja gotowa")
 $stepLabels = @()
 for ($i = 0; $i -lt 4; $i++) {
     $lb            = New-Object Windows.Forms.Label
@@ -165,9 +165,9 @@ Set-Step 35 "Pobieranie aktualizacji..." 1 1
 git pull --quiet 2>&1 | Out-Null
 Set-Step 50 "Aktualizacje pobrane" 2 2; Start-Sleep -Milliseconds 200
 
-# Krok 3: compose up
-Set-Step 58 "Uruchamianie kontenera..." 2 2
-docker-compose up -d 2>&1 | Out-Null
+# Krok 3: compose up (--build przebudowuje obraz po git pull)
+Set-Step 58 "Budowanie i uruchamianie kontenera..." 2 2
+docker-compose up -d --build 2>&1 | Out-Null
 Set-Step 75 "Kontener uruchomiony" 3 3; Start-Sleep -Milliseconds 200
 
 # Krok 4: health check
