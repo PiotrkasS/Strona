@@ -4,7 +4,8 @@ const navItems = [
   { to: '/dashboard', icon: '📊', label: 'Dashboard' },
   { to: '/tests',     icon: '▶️',  label: 'Uruchom testy' },
   { to: '/record',    icon: '🎬',  label: 'Nagraj test' },
-  { to: '/results',   icon: '📋',  label: 'Historia wyników' },
+  { to: '/results',    icon: '📋',  label: 'Historia wyników' },
+  { to: '/testcases', icon: '🏷',  label: 'Test Cases' },
   { to: '/settings',  icon: '⚙️',  label: 'Ustawienia' },
 ];
 
