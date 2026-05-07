@@ -25,6 +25,7 @@ match (true) {
     $path === '/screenshot'    && $method === 'GET'    => handleServeScreenshot(),
     $path === '/trace-launch'  && $method === 'POST'   => handleTraceLaunch(),
     $path === '/trace-file'    && $method === 'GET'    => handleTraceFile(),
+    $path === '/upload-tests'  && $method === 'POST'   => handleUploadTests(),
     default => respond(404, ['error' => 'Endpoint not found']),
 };
 
@@ -638,6 +639,148 @@ function handleTraceFile(): void
     header('Content-Disposition: attachment; filename="' . basename($abs) . '"');
     header('Content-Length: ' . filesize($abs));
     readfile($abs);
+}
+
+function handleUploadTests(): void
+{
+    if (empty($_FILES['files'])) {
+        respond(400, ['error' => 'Brak plików']); return;
+    }
+
+    $testsDir = realpath(__DIR__ . '/../tests');
+    if (!$testsDir || !is_dir($testsDir)) {
+        respond(500, ['error' => 'Katalog tests nie istnieje']); return;
+    }
+
+    $fileList  = normalizeFilesArray($_FILES['files']);
+    $folders   = (array)($_POST['folders'] ?? []);
+    $overwrite = ($_POST['overwrite'] ?? 'false') === 'true';
+    $results   = [];
+
+    foreach ($fileList as $i => $file) {
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            $results[] = ['name' => $file['name'], 'ok' => false, 'error' => 'Błąd przesyłania (kod ' . $file['error'] . ')'];
+            continue;
+        }
+
+        $origName = basename($file['name']);
+        $ext      = strtolower(pathinfo($origName, PATHINFO_EXTENSION));
+
+        // ── ZIP: wypakuj i zaimportuj spec pliki ──────────────────────────────
+        if ($ext === 'zip') {
+            $zip = new ZipArchive();
+            if ($zip->open($file['tmp_name']) !== true) {
+                $results[] = ['name' => $origName, 'ok' => false, 'error' => 'Nie można otworzyć ZIP'];
+                continue;
+            }
+            $imported = 0;
+            for ($z = 0; $z < $zip->numFiles; $z++) {
+                $zName = $zip->getNameIndex($z);
+                $zExt  = strtolower(pathinfo($zName, PATHINFO_EXTENSION));
+                if (!in_array($zExt, ['ts', 'js'])) continue;
+                if (!str_contains(strtolower($zName), '.spec.') && !str_contains(strtolower($zName), '.test.')) continue;
+                $zContent = $zip->getFromIndex($z);
+                if ($zContent === false || strlen($zContent) > 2_000_000) continue;
+                if (!pwContentValid($zContent)) continue;
+
+                $targetFolder = sanitizeFolder($folders[$i] ?? '');
+                $targetDir    = $targetFolder ? $testsDir . '/' . $targetFolder : $testsDir;
+                if (!is_dir($targetDir)) mkdir($targetDir, 0755, true);
+
+                $targetName = basename($zName);
+                $targetPath = $targetDir . '/' . $targetName;
+                if (file_exists($targetPath) && !$overwrite) {
+                    $targetPath = $targetDir . '/' . pathinfo($targetName, PATHINFO_FILENAME)
+                        . '_' . date('His') . '.' . $zExt;
+                }
+                file_put_contents($targetPath, $zContent);
+                $relPath = ltrim(str_replace($testsDir, '', $targetPath), '/\\');
+                $results[] = ['name' => basename($zName), 'ok' => true, 'path' => $relPath,
+                    'tests' => countPwTests($zContent), 'from_zip' => $origName];
+                $imported++;
+            }
+            $zip->close();
+            if ($imported === 0) {
+                $results[] = ['name' => $origName, 'ok' => false, 'error' => 'ZIP nie zawiera plików .spec.ts/.spec.js'];
+            }
+            continue;
+        }
+
+        // ── Pojedynczy plik ───────────────────────────────────────────────────
+        if (!in_array($ext, ['ts', 'js'])) {
+            $results[] = ['name' => $origName, 'ok' => false, 'error' => 'Format nieobsługiwany (wymagany .spec.ts/.spec.js/.zip)'];
+            continue;
+        }
+        if (!str_contains(strtolower($origName), '.spec.') && !str_contains(strtolower($origName), '.test.')) {
+            $results[] = ['name' => $origName, 'ok' => false, 'error' => 'Nazwa musi zawierać .spec. lub .test.'];
+            continue;
+        }
+        if ($file['size'] > 2_000_000) {
+            $results[] = ['name' => $origName, 'ok' => false, 'error' => 'Plik za duży (max 2MB)'];
+            continue;
+        }
+
+        $content = file_get_contents($file['tmp_name']);
+        if (!pwContentValid($content)) {
+            $results[] = ['name' => $origName, 'ok' => false,
+                'error' => 'Brak wzorców Playwright — dodaj import z @playwright/test lub test()/describe()'];
+            continue;
+        }
+
+        $targetFolder = sanitizeFolder($folders[$i] ?? '');
+        $targetDir    = $targetFolder ? $testsDir . '/' . $targetFolder : $testsDir;
+        if (!is_dir($targetDir)) mkdir($targetDir, 0755, true);
+
+        $targetPath = $targetDir . '/' . $origName;
+        if (file_exists($targetPath) && !$overwrite) {
+            $base       = pathinfo($origName, PATHINFO_FILENAME);
+            $targetPath = $targetDir . '/' . $base . '_' . date('His') . '.' . $ext;
+        }
+
+        if (!move_uploaded_file($file['tmp_name'], $targetPath)) {
+            $results[] = ['name' => $origName, 'ok' => false, 'error' => 'Błąd zapisu na dysk'];
+            continue;
+        }
+
+        $relPath   = ltrim(str_replace($testsDir, '', $targetPath), '/\\');
+        $results[] = ['name' => $origName, 'ok' => true, 'path' => $relPath, 'tests' => countPwTests($content)];
+    }
+
+    respond(200, ['results' => $results]);
+}
+
+function pwContentValid(string $c): bool
+{
+    return str_contains($c, '@playwright/test')
+        || (bool)preg_match('/\b(test|it|describe)\s*\(/', $c)
+        || str_contains(strtolower($c), 'playwright');
+}
+
+function countPwTests(string $c): int
+{
+    preg_match_all('/\b(test|it)\s*\(\s*[\'"`]/', $c, $m);
+    return count($m[0]);
+}
+
+function sanitizeFolder(string $f): string
+{
+    return preg_replace('/[^a-zA-Z0-9_\-\/]/', '', trim($f, '/'));
+}
+
+function normalizeFilesArray(array $files): array
+{
+    if (!is_array($files['name'])) return [$files];
+    $out = [];
+    for ($i = 0; $i < count($files['name']); $i++) {
+        $out[] = [
+            'name'     => $files['name'][$i],
+            'type'     => $files['type'][$i],
+            'tmp_name' => $files['tmp_name'][$i],
+            'error'    => $files['error'][$i],
+            'size'     => $files['size'][$i],
+        ];
+    }
+    return $out;
 }
 
 // ─── SSE helpers ─────────────────────────────────────────────────────────────

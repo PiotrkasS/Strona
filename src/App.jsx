@@ -5,6 +5,7 @@ import TestRunner from './pages/TestRunner.jsx';
 import CreateTest from './pages/CreateTest.jsx';
 import Results from './pages/Results.jsx';
 import TestCases from './pages/TestCases.jsx';
+import ImportTests from './pages/ImportTests.jsx';
 import Settings from './pages/Settings.jsx';
 
 export default function App() {
@@ -17,6 +18,7 @@ export default function App() {
         <Route path="record"    element={<CreateTest />} />
         <Route path="results"    element={<Results />} />
         <Route path="testcases" element={<TestCases />} />
+        <Route path="import"    element={<ImportTests />} />
         <Route path="settings"  element={<Settings />} />
         <Route path="*"         element={<Navigate to="/dashboard" replace />} />
       </Route>
