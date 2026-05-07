@@ -21,6 +21,8 @@ match (true) {
     $path === '/file-content'  && $method === 'PUT'    => handleSaveFile(),
     $path === '/ai-fix'        && $method === 'POST'   => handleAiFix(),
     $path === '/close-browser' && $method === 'POST'   => handleCloseBrowser(),
+    $path === '/screenshots'   && $method === 'GET'    => handleScreenshots(),
+    $path === '/screenshot'    && $method === 'GET'    => handleServeScreenshot(),
     default => respond(404, ['error' => 'Endpoint not found']),
 };
 
@@ -125,12 +127,19 @@ function handleRun(): void
     $jsonTmp    = tempnam(sys_get_temp_dir(), 'pw_json_');
     $fileArg    = implode(' ', $fileParts);
 
+    $browser   = $options['browser'] ?? 'chromium';
+    if (!in_array($browser, ['chromium', 'firefox', 'webkit'], true)) {
+        $browser = 'chromium';
+    }
+    $customUrl = trim($options['baseUrl'] ?? '');
+
     $env = array_merge(getenv() ?: [], [
         'PLAYWRIGHT_JSON_OUTPUT_NAME' => $jsonTmp,
         'FORCE_COLOR'                 => '0',
         'CI'                          => $headed ? '0' : '1',
         'DISPLAY'                     => getenv('DISPLAY') ?: ':99',
         'PW_SLOW_MO'                  => $slowMo > 0 ? (string)$slowMo : '0',
+        'BASE_URL'                    => $customUrl ?: (getenv('BASE_URL') ?: 'http://localhost'),
     ]);
 
     $descriptors = [
@@ -140,6 +149,7 @@ function handleRun(): void
     ];
 
     $cmd = 'npx playwright test ' . $fileArg . ' --reporter=json,list';
+    $cmd .= ' --project=' . escapeshellarg($browser);
     if (!empty($grepParts)) {
         $cmd .= ' --grep ' . escapeshellarg(implode('|', $grepParts));
     }
@@ -527,6 +537,39 @@ function handleSaveFile(): void
 
     file_put_contents($abs, $content);
     respond(200, ['ok' => true]);
+}
+
+function handleScreenshots(): void
+{
+    $projectRoot = realpath(__DIR__ . '/..');
+    $resultsDir  = $projectRoot . '/test-results';
+    $images = [];
+    if (is_dir($resultsDir)) {
+        $iter = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($resultsDir));
+        foreach ($iter as $f) {
+            if ($f->isFile() && in_array(strtolower($f->getExtension()), ['png', 'jpg', 'jpeg'])) {
+                $rel = ltrim(str_replace($resultsDir, '', $f->getPathname()), DIRECTORY_SEPARATOR);
+                $rel = str_replace(DIRECTORY_SEPARATOR, '/', $rel);
+                $images[] = ['path' => $rel, 'name' => $f->getFilename(), 'size' => $f->getSize()];
+            }
+        }
+    }
+    respond(200, ['images' => $images]);
+}
+
+function handleServeScreenshot(): void
+{
+    $relPath    = $_GET['path'] ?? '';
+    $projectRoot = realpath(__DIR__ . '/..');
+    $resultsDir  = realpath($projectRoot . '/test-results');
+    if (!$resultsDir || $relPath === '') { http_response_code(404); exit; }
+    $abs = realpath($resultsDir . '/' . ltrim($relPath, '/'));
+    if (!$abs || !str_starts_with($abs, $resultsDir) || !is_file($abs)) { http_response_code(404); exit; }
+    $ext = strtolower(pathinfo($abs, PATHINFO_EXTENSION));
+    $mime = $ext === 'png' ? 'image/png' : 'image/jpeg';
+    header("Content-Type: $mime");
+    header("Content-Length: " . filesize($abs));
+    readfile($abs);
 }
 
 // ─── SSE helpers ─────────────────────────────────────────────────────────────

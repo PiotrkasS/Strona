@@ -5,6 +5,7 @@ const navItems = [
   { to: '/tests',     icon: '▶️',  label: 'Uruchom testy' },
   { to: '/record',    icon: '🎬',  label: 'Nagraj test' },
   { to: '/results',   icon: '📋',  label: 'Historia wyników' },
+  { to: '/settings',  icon: '⚙️',  label: 'Ustawienia' },
 ];
 
 export default function Sidebar() {

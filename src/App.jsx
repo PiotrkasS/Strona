@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard.jsx';
 import TestRunner from './pages/TestRunner.jsx';
 import CreateTest from './pages/CreateTest.jsx';
 import Results from './pages/Results.jsx';
+import Settings from './pages/Settings.jsx';
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
         <Route path="tests"     element={<TestRunner />} />
         <Route path="record"    element={<CreateTest />} />
         <Route path="results"   element={<Results />} />
+        <Route path="settings"  element={<Settings />} />
         <Route path="*"         element={<Navigate to="/dashboard" replace />} />
       </Route>
     </Routes>

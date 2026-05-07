@@ -1,4 +1,5 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import MonacoEditor from '@monaco-editor/react';
 
 export default function EditorModal({ path, name, onClose, onSaved }) {
   const [content, setContent] = useState('');
@@ -6,36 +7,25 @@ export default function EditorModal({ path, name, onClose, onSaved }) {
   const [saving,  setSaving]  = useState(false);
   const [fixing,  setFixing]  = useState(false);
   const [error,   setError]   = useState(null);
-  const [saved,   setSaved]   = useState(false);
   const [aiNote,  setAiNote]  = useState(null);
-  const textareaRef           = useRef(null);
+  const saveRef               = useRef(null);
 
   useEffect(() => {
     fetch('/api/file-content?path=' + encodeURIComponent(path))
       .then(r => r.json())
-      .then(d => {
-        if (d.error) throw new Error(d.error);
-        setContent(d.content ?? '');
-      })
+      .then(d => { if (d.error) throw new Error(d.error); setContent(d.content ?? ''); })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [path]);
 
-  // Focus textarea after load
-  useEffect(() => {
-    if (!loading && textareaRef.current) textareaRef.current.focus();
-  }, [loading]);
-
-  // Close on Escape
   useEffect(() => {
     const handler = e => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  const save = async () => {
-    setSaving(true);
-    setError(null);
+  const save = useCallback(async () => {
+    setSaving(true); setError(null);
     try {
       const res = await fetch('/api/file-content?path=' + encodeURIComponent(path), {
         method: 'PUT',
@@ -46,17 +36,14 @@ export default function EditorModal({ path, name, onClose, onSaved }) {
       if (!res.ok) throw new Error(d.error ?? 'Błąd zapisu');
       if (onSaved) onSaved();
       onClose();
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setSaving(false);
-    }
-  };
+    } catch (e) { setError(e.message); }
+    finally { setSaving(false); }
+  }, [content, path, onSaved, onClose]);
+
+  useEffect(() => { saveRef.current = save; }, [save]);
 
   const fixWithAi = async () => {
-    setFixing(true);
-    setError(null);
-    setAiNote(null);
+    setFixing(true); setError(null); setAiNote(null);
     try {
       const res = await fetch('/api/ai-fix', {
         method: 'POST',
@@ -67,29 +54,17 @@ export default function EditorModal({ path, name, onClose, onSaved }) {
       if (!res.ok) throw new Error(d.error ?? 'Błąd AI');
       setContent(d.code);
       setAiNote(`✨ ${d.model ?? 'AI'} poprawił kod — sprawdź i zapisz.`);
-      setSaved(false);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setFixing(false);
-    }
+    } catch (e) { setError(e.message); }
+    finally { setFixing(false); }
   };
 
-  // Tab key inserts spaces instead of switching focus
-  const handleKeyDown = e => {
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      const ta  = e.target;
-      const s   = ta.selectionStart;
-      const end = ta.selectionEnd;
-      const newVal = content.substring(0, s) + '  ' + content.substring(end);
-      setContent(newVal);
-      requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = s + 2; });
-    }
-    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-      e.preventDefault();
-      save();
-    }
+  const handleEditorMount = (editor, monaco) => {
+    editor.addAction({
+      id: 'save-file',
+      label: 'Save File',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
+      run: () => saveRef.current?.(),
+    });
   };
 
   const lines = content.split('\n').length;
@@ -98,7 +73,6 @@ export default function EditorModal({ path, name, onClose, onSaved }) {
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal-box">
 
-        {/* Header */}
         <div className="modal-header">
           <div>
             <div className="modal-title">✏️ Edytuj test</div>
@@ -111,39 +85,43 @@ export default function EditorModal({ path, name, onClose, onSaved }) {
           </div>
         </div>
 
-        {/* Body */}
-        <div className="modal-body">
-          {loading && (
+        <div className="modal-body" style={{ padding: 0, overflow: 'hidden' }}>
+          {loading ? (
             <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)' }}>
               <div className="spinner" style={{ margin: '0 auto 12px' }} /> Ładowanie…
             </div>
-          )}
-          {!loading && (
-            <textarea
-              ref={textareaRef}
-              className="code-editor"
+          ) : (
+            <MonacoEditor
+              height="100%"
+              defaultLanguage="typescript"
               value={content}
-              onChange={e => { setContent(e.target.value); setSaved(false); }}
-              onKeyDown={handleKeyDown}
-              spellCheck={false}
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
+              theme="vs-dark"
+              onChange={v => setContent(v ?? '')}
+              onMount={handleEditorMount}
+              options={{
+                fontSize: 13,
+                fontFamily: '"Fira Code", "Cascadia Code", Consolas, monospace',
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                wordWrap: 'on',
+                lineNumbers: 'on',
+                renderLineHighlight: 'line',
+                tabSize: 2,
+                automaticLayout: true,
+                padding: { top: 12 },
+              }}
             />
           )}
         </div>
 
-        {/* Footer */}
         <div className="modal-footer">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 }}>
             {error  && <span className="modal-err">⚠ {error}</span>}
-            {saved  && <span className="modal-ok">✅ Zapisano!</span>}
-            {aiNote && !saved && <span style={{ color: '#a5b4fc', fontSize: 12 }}>{aiNote}</span>}
+            {aiNote && <span style={{ color: '#a5b4fc', fontSize: 12 }}>{aiNote}</span>}
           </div>
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
             <button className="btn btn-ghost" onClick={onClose}>Anuluj</button>
-            <button className="btn btn-ghost" onClick={fixWithAi} disabled={fixing || loading || saving}
-              title="Wyślij kod do Claude AI — poprawi selektory, usunie duplikaty, doda asercje">
+            <button className="btn btn-ghost" onClick={fixWithAi} disabled={fixing || loading || saving}>
               {fixing ? <><div className="spinner" style={{ borderTopColor: '#a78bfa' }} /> Analizuję…</> : '🤖 Napraw z AI'}
             </button>
             <button className="btn btn-primary" onClick={save} disabled={saving || loading || fixing}>

@@ -11,13 +11,21 @@ export default function TestRunner() {
   const [headed, setHeaded]         = useState(true);
   const [slowMo, setSlowMo]         = useState(0);
   const [pauseAfter, setPauseAfter] = useState(false);
-  const [editFile, setEditFile]     = useState(null); // { path, name }
+  const [browser, setBrowser]       = useState('chromium');
+  const [envUrl, setEnvUrl]         = useState('');
+  const [environments, setEnvironments] = useState([]);
+  const [editFile, setEditFile]     = useState(null);
   const [running, setRunning]       = useState(false);
   const [paused, setPaused]         = useState(false);
   const [lines, setLines]           = useState([]);
   const [progress, setProgress]     = useState({ done: 0, total: 0 });
   const [runResult, setRunResult]   = useState(null);
   const [runError, setRunError]     = useState(null);
+
+  useEffect(() => {
+    const saved = JSON.parse(localStorage.getItem('pw_envs') ?? '[]');
+    setEnvironments(saved);
+  }, []);
 
   const loadTests = useCallback(() => {
     setLoading(true);
