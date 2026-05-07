@@ -65,15 +65,20 @@ function FileResult({ file, tests, passed, failed, skipped }) {
                 <div className="tr-name">{t.title}</div>
                 {t.duration > 0 && <div className="tr-dur">{t.duration}ms</div>}
                 {t.error && <div className="tr-error">{t.error}</div>}
-                {t.screenshots?.length > 0 && (
-                  <div className="screenshot-row">
-                    {t.screenshots.map((sc, si) => (
+
+                {/* ── Akcje: screenshoty + trace ── */}
+                {(t.screenshots?.length > 0 || t.traces?.length > 0) && (
+                  <div className="tr-attachments">
+                    {t.screenshots?.map((sc, si) => (
                       <a key={si} href={`/api/screenshot?path=${encodeURIComponent(sc)}`}
                          target="_blank" rel="noreferrer" className="screenshot-thumb">
                         <img src={`/api/screenshot?path=${encodeURIComponent(sc)}`}
                           alt="screenshot" loading="lazy" />
                         <span>📷 Zrzut</span>
                       </a>
+                    ))}
+                    {t.traces?.map((tr, ti) => (
+                      <TraceButtons key={ti} tracePath={tr} />
                     ))}
                   </div>
                 )}
@@ -86,10 +91,69 @@ function FileResult({ file, tests, passed, failed, skipped }) {
   );
 }
 
-function groupByFile(suites) {
+function TraceButtons({ tracePath }) {
+  const [status, setStatus] = useState('idle'); // idle | loading | ready | error
+  const [viewerUrl, setViewerUrl] = useState(null);
+  const [errorMsg, setErrorMsg]   = useState('');
+
+  const launch = async () => {
+    setStatus('loading');
+    setErrorMsg('');
+    try {
+      const res = await fetch('/api/trace-launch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: tracePath }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? 'Błąd serwera');
+      if (!d.ready) throw new Error('Serwer nie odpowiada — spróbuj ponownie');
+      setViewerUrl(d.url);
+      setStatus('ready');
+      window.open(d.url, '_blank');
+    } catch (e) {
+      setErrorMsg(e.message);
+      setStatus('error');
+    }
+  };
+
+  const downloadUrl = `/api/trace-file?path=${encodeURIComponent(tracePath)}`;
+
+  return (
+    <div className="trace-row">
+      <button className="btn btn-ghost btn-xs trace-btn" onClick={launch}
+        disabled={status === 'loading'} title="Uruchom Playwright Trace Viewer">
+        {status === 'loading'
+          ? <><div className="spinner" style={{ width: 10, height: 10, borderWidth: 1.5 }} /> Uruchamiam…</>
+          : status === 'ready'
+            ? '🔍 Otwórz ponownie'
+            : '🔍 Trace Viewer'}
+      </button>
+
+      <a href={downloadUrl} download className="btn btn-ghost btn-xs"
+        title="Pobierz plik trace.zip">
+        ⬇ trace.zip
+      </a>
+
+      {status === 'ready' && viewerUrl && (
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+          → <a href={viewerUrl} target="_blank" rel="noreferrer"
+              style={{ color: 'var(--primary)' }}>{viewerUrl}</a>
+        </span>
+      )}
+      {status === 'error' && (
+        <span style={{ fontSize: 11, color: 'var(--error)' }}>⚠ {errorMsg}</span>
+      )}
+    </div>
+  );
+}
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
+
+export function groupByFile(suites) {
   const map = new Map();
-  function walk(suites, file) {
-    for (const suite of suites) {
+  function walk(list, file) {
+    for (const suite of list) {
       const f = suite.file ?? file;
       if (suite.specs) {
         if (!map.has(f)) map.set(f, []);
@@ -98,14 +162,19 @@ function groupByFile(suites) {
           const res  = test?.results?.[0] ?? {};
           const screenshots = (res.attachments ?? [])
             .filter(a => a.contentType?.includes('image') || a.name === 'screenshot')
-            .map(a => { const p = a.path ?? ''; const i = p.indexOf('/test-results/'); return i >= 0 ? p.slice(i + 14) : null; })
+            .map(a => extractRelPath(a.path ?? ''))
+            .filter(Boolean);
+          const traces = (res.attachments ?? [])
+            .filter(a => a.name === 'trace' || a.path?.endsWith('trace.zip'))
+            .map(a => extractRelPath(a.path ?? ''))
             .filter(Boolean);
           map.get(f).push({
-            title: spec.title,
-            status: resolveStatus(test),
+            title:    spec.title,
+            status:   resolveStatus(test),
             duration: res.duration ?? 0,
-            error: res.errors?.[0]?.message ?? null,
+            error:    res.errors?.[0]?.message ?? null,
             screenshots,
+            traces,
           });
         }
       }
@@ -114,6 +183,11 @@ function groupByFile(suites) {
   }
   walk(suites, '');
   return [...map.entries()].map(([file, tests]) => ({ file, tests }));
+}
+
+function extractRelPath(p) {
+  const i = p.indexOf('/test-results/');
+  return i >= 0 ? p.slice(i + 14) : null;
 }
 
 function resolveStatus(test) {

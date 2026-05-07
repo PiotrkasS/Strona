@@ -10,7 +10,7 @@ export default defineConfig({
     baseURL: process.env.BASE_URL || 'http://localhost',
     screenshot: 'only-on-failure',
     video: 'off',
-    trace: 'off',
+    trace: 'retain-on-failure',
     launchOptions: slowMo > 0 ? { slowMo } : {},
   },
   projects: [

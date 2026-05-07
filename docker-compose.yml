@@ -4,6 +4,7 @@ services:
     ports:
       - "8080:8000"   # aplikacja webowa
       - "7900:7900"   # podgląd przeglądarki (noVNC)
+      - "9323:9323"   # Playwright Trace Viewer
     environment:
       BASE_URL:        ${BASE_URL:-http://localhost}
       PANEL_USER:      ${PANEL_USER:-admin}

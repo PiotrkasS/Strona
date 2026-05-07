@@ -23,6 +23,8 @@ match (true) {
     $path === '/close-browser' && $method === 'POST'   => handleCloseBrowser(),
     $path === '/screenshots'   && $method === 'GET'    => handleScreenshots(),
     $path === '/screenshot'    && $method === 'GET'    => handleServeScreenshot(),
+    $path === '/trace-launch'  && $method === 'POST'   => handleTraceLaunch(),
+    $path === '/trace-file'    && $method === 'GET'    => handleTraceFile(),
     default => respond(404, ['error' => 'Endpoint not found']),
 };
 
@@ -569,6 +571,72 @@ function handleServeScreenshot(): void
     $mime = $ext === 'png' ? 'image/png' : 'image/jpeg';
     header("Content-Type: $mime");
     header("Content-Length: " . filesize($abs));
+    readfile($abs);
+}
+
+function handleTraceLaunch(): void
+{
+    $data    = json_decode(file_get_contents('php://input'), true) ?? [];
+    $relPath = $data['path'] ?? '';
+
+    $root       = realpath(__DIR__ . '/..');
+    $resultsDir = realpath($root . '/test-results');
+    if (!$resultsDir || $relPath === '') { respond(400, ['error' => 'Invalid path']); return; }
+    $abs = realpath($resultsDir . '/' . ltrim($relPath, '/'));
+    if (!$abs || !str_starts_with($abs, $resultsDir) || !is_file($abs)) {
+        respond(404, ['error' => 'Trace file not found']); return;
+    }
+
+    $port    = 9323;
+    $pidFile = sys_get_temp_dir() . '/pw_trace_server.pid';
+
+    // Zatrzymaj poprzedni serwer trace
+    if (file_exists($pidFile)) {
+        $oldPid = (int)file_get_contents($pidFile);
+        if ($oldPid > 0) {
+            @posix_kill($oldPid, SIGTERM);
+            usleep(400000);
+        }
+    }
+
+    // Uruchom serwer trace (DISPLAY=:9999 zapobiega otwarciu okna przeglądarki w kontenerze)
+    $cmd = 'DISPLAY=:9999 npx playwright show-trace'
+         . ' --host 0.0.0.0'
+         . ' --port ' . $port
+         . ' ' . escapeshellarg($abs)
+         . ' > /tmp/pw_trace.log 2>&1 & echo $!';
+    $pid = (int)trim(shell_exec($cmd));
+    file_put_contents($pidFile, (string)$pid);
+
+    // Czekaj aż serwer będzie gotowy (max 4s)
+    $ready = false;
+    for ($i = 0; $i < 12; $i++) {
+        usleep(350000);
+        $ctx = @stream_context_create(['http' => ['timeout' => 1, 'ignore_errors' => true]]);
+        if (@file_get_contents("http://127.0.0.1:{$port}", false, $ctx) !== false) {
+            $ready = true;
+            break;
+        }
+    }
+
+    respond($ready ? 200 : 503, [
+        'url'   => 'http://localhost:' . $port,
+        'port'  => $port,
+        'ready' => $ready,
+    ]);
+}
+
+function handleTraceFile(): void
+{
+    $relPath    = $_GET['path'] ?? '';
+    $root       = realpath(__DIR__ . '/..');
+    $resultsDir = realpath($root . '/test-results');
+    if (!$resultsDir || $relPath === '') { http_response_code(404); exit; }
+    $abs = realpath($resultsDir . '/' . ltrim($relPath, '/'));
+    if (!$abs || !str_starts_with($abs, $resultsDir) || !is_file($abs)) { http_response_code(404); exit; }
+    header('Content-Type: application/zip');
+    header('Content-Disposition: attachment; filename="' . basename($abs) . '"');
+    header('Content-Length: ' . filesize($abs));
     readfile($abs);
 }
 

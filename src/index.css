@@ -897,3 +897,54 @@ a { color: inherit; text-decoration: none; }
 
 /* ── result-badge skipped ────────────────────────────────── */
 .result-badge.skipped { background: #1e293b; color: var(--muted); border: 1px solid var(--border); }
+
+/* ── Trace Viewer ─────────────────────────────────────────── */
+.tr-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+  align-items: center;
+}
+.trace-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.trace-btn {
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: #a5b4fc;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.trace-btn:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.22);
+  border-color: rgba(99, 102, 241, 0.5);
+}
+
+/* ── Screenshot thumbnail ─────────────────────────────────── */
+.screenshot-thumb {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+  background: var(--bg3);
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color .15s;
+  text-decoration: none;
+}
+.screenshot-thumb:hover { border-color: var(--primary); }
+.screenshot-thumb img {
+  max-width: 120px;
+  max-height: 80px;
+  border-radius: 4px;
+  object-fit: cover;
+}
